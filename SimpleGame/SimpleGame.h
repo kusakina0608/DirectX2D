@@ -37,14 +37,39 @@ inline void SafeRelease(Interface** ppInterfaceToRelease)
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define HINST_THISCOMPONENT ((HINSTANCE)&__ImageBase)
 #endif
+
+#define IDLE 1
+#define WALK 2
+#define ELF_IDLE_NUM 21
+#define ELF_WALK_NUM 12
+#define FIGHTER_IDLE_NUM 39
+#define FIGHTER_WALK_NUM 36
+#define SORCERESS_IDLE_NUM 31
+#define SORCERESS_WALK_NUM 12
+
 class SimpleGame
 {
 private:
 	HWND m_hwnd;
 	ID2D1Factory* m_pDirect2dFactory;
 	ID2D1HwndRenderTarget* m_pRenderTarget;
-	ID2D1SolidColorBrush* m_pLightSlateGrayBrush;
-	ID2D1SolidColorBrush* m_pCornflowerBlueBrush;
+
+	// 비트맵 로드를 위한 m_pWICFactory 객체
+	IWICImagingFactory* m_pWICFactory;
+	// Ground.png를 위한 비트맵
+	ID2D1Bitmap* m_pGroundBitmap;
+	// ELF의 IDLE 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfIdleBitmap[ELF_IDLE_NUM];
+	// ELF의 WALK 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfWalkBitmap[ELF_WALK_NUM];
+	// FIGHTER의 IDLE 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterIdleBitmap[FIGHTER_IDLE_NUM];
+	// FIGHTER의 WALK 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterWalkBitmap[FIGHTER_WALK_NUM];
+	// SORCERESS의 IDLE 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressIdleBitmap[SORCERESS_IDLE_NUM];
+	// SORCERESS의 WALK 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressWalkBitmap[SORCERESS_WALK_NUM];
 
 public:
 	SimpleGame();
@@ -58,6 +83,6 @@ private:
 	void DiscardDeviceResources(); // 장치 의존 자원들을 반납
 	HRESULT OnRender(); // 내용을 그리기
 	void OnResize(UINT width, UINT height); // 렌더타겟을 resize
-	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, // 윈도우 프로시져
-		WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+	HRESULT LoadBitmapFromFile(ID2D1RenderTarget* pRenderTarget, IWICImagingFactory* pIWICFactory, PCWSTR uri, UINT destinationWidth, UINT destinationHeight, ID2D1Bitmap** ppBitmap);
 };

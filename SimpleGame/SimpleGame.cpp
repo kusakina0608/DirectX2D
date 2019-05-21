@@ -1,5 +1,10 @@
 #include "SimpleGame.h"
 
+
+// playerState
+unsigned int ELFState = WALK;
+unsigned int ELFFrame = 16;
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	// 이 프로세스가 사용하는 힙에 에러가 발생하면 이 프로세스를 종료하도록 명시함.
@@ -21,8 +26,14 @@ SimpleGame::SimpleGame() :
 	m_hwnd(NULL),
 	m_pDirect2dFactory(NULL),
 	m_pRenderTarget(NULL),
-	m_pLightSlateGrayBrush(NULL),
-	m_pCornflowerBlueBrush(NULL)
+	m_pWICFactory(NULL),
+	m_pGroundBitmap(NULL),
+	m_pElfIdleBitmap(),
+	m_pElfWalkBitmap(),
+	m_pFighterIdleBitmap(),
+	m_pFighterWalkBitmap(),
+	m_pSorceressIdleBitmap(),
+	m_pSorceressWalkBitmap()
 {
 }
 
@@ -30,18 +41,33 @@ SimpleGame::~SimpleGame()
 {
 	SafeRelease(&m_pDirect2dFactory);
 	SafeRelease(&m_pRenderTarget);
-	SafeRelease(&m_pLightSlateGrayBrush);
-	SafeRelease(&m_pCornflowerBlueBrush);
-}
 
-void SimpleGame::RunMessageLoop()
-{
-	MSG msg;
+	SAFE_RELEASE(m_pWICFactory);
 
-	while (GetMessage(&msg, NULL, 0, 0))
+	SAFE_RELEASE(m_pGroundBitmap);
+	for (int i = 0; i < ELF_IDLE_NUM; i++)
 	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		SAFE_RELEASE(m_pElfIdleBitmap[i]);
+	}
+	for (int i = 0; i < ELF_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pElfWalkBitmap[i]);
+	}
+	for (int i = 0; i < FIGHTER_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pFighterIdleBitmap[i]);
+	}
+	for (int i = 0; i < FIGHTER_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pFighterWalkBitmap[i]);
+	}
+	for (int i = 0; i < SORCERESS_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pSorceressIdleBitmap[i]);
+	}
+	for (int i = 0; i < SORCERESS_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pSorceressWalkBitmap[i]);
 	}
 }
 
@@ -61,8 +87,8 @@ HRESULT SimpleGame::Initialize() {
 		m_hwnd = CreateWindow( // 윈도우를 생성함
 			L"Kina Roguelike", L"Kina Roguelike",
 			WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-			static_cast<UINT>(ceil(640.f * dpiX / 96.f)),
-			static_cast<UINT>(ceil(480.f * dpiY / 96.f)),
+			/*static_cast<UINT>(ceil(640.f * dpiX / 96.f))*/1200,
+			/*static_cast<UINT>(ceil(480.f * dpiY / 96.f))*/800,
 			NULL, NULL, HINST_THISCOMPONENT, this);
 		hr = m_hwnd ? S_OK : E_FAIL;
 		if (SUCCEEDED(hr)) {
@@ -73,6 +99,17 @@ HRESULT SimpleGame::Initialize() {
 	return hr;
 }
 
+void SimpleGame::RunMessageLoop()
+{
+	MSG msg;
+
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+}
+
 HRESULT SimpleGame::CreateDeviceIndependentResources()
 {
 	// 장치 독립적 자원들을 생성함
@@ -81,12 +118,18 @@ HRESULT SimpleGame::CreateDeviceIndependentResources()
 	// Create a Direct2D factory.
 	hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &m_pDirect2dFactory);
 
+	// Create a WIC factory.
+	if (SUCCEEDED(hr))
+	{
+		hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&m_pWICFactory));
+	}
+
 	return hr;
 }
 
 HRESULT SimpleGame::CreateDeviceResources()
 {
-	// 장치 의존적 자원들, 하나의 렌더타겟, 두개의 브러시를 생성함
+	// 장치 의존적 자원들을 생성함
 	HRESULT hr = S_OK;
 
 	if (!m_pRenderTarget) { // 렌더타겟이 이미 유효하면 실행하지 않음
@@ -95,17 +138,70 @@ HRESULT SimpleGame::CreateDeviceResources()
 		D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
 		// D2D 렌더타겟을 생성함.
-		hr = m_pDirect2dFactory->CreateHwndRenderTarget(
-			D2D1::RenderTargetProperties(),
-			D2D1::HwndRenderTargetProperties(m_hwnd, size), //클라이언트 영역과 동일 크기로.
-			&m_pRenderTarget);
-		if (SUCCEEDED(hr)) {
-			hr = m_pRenderTarget->CreateSolidColorBrush(  // 회색 브러시 생성
-				D2D1::ColorF(D2D1::ColorF::LightSlateGray), &m_pLightSlateGrayBrush);
+		hr = m_pDirect2dFactory->CreateHwndRenderTarget(D2D1::RenderTargetProperties(), D2D1::HwndRenderTargetProperties(m_hwnd, size), &m_pRenderTarget);
+
+		if (SUCCEEDED(hr))
+		{
+			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\ground.png", 1200, 100, &m_pGroundBitmap);
 		}
-		if (SUCCEEDED(hr)) {
-			hr = m_pRenderTarget->CreateSolidColorBrush(  //파랑색 브러시 생성
-				D2D1::ColorF(D2D1::ColorF::CornflowerBlue), &m_pCornflowerBlueBrush);
+
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < ELF_IDLE_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\ELF_IDLE\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pElfIdleBitmap[i++]);
+			}
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < ELF_WALK_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\ELF_WALK\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pElfWalkBitmap[i++]);
+			}
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < FIGHTER_IDLE_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\FIGHTER_IDLE\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pFighterIdleBitmap[i++]);
+			}
+		}
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < FIGHTER_WALK_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\FIGHTER_WALK\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pFighterWalkBitmap[i++]);
+			}
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < SORCERESS_IDLE_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\SORCERESS_IDLE\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pSorceressIdleBitmap[i++]);
+			}
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < SORCERESS_WALK_NUM; i++)
+			{
+				wchar_t path[100];
+				wsprintf(path, L".\\Image\\gif\\SORCERESS_WALK\\%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path, 0, 0, &m_pSorceressWalkBitmap[i++]);
+			}
 		}
 	}
 	return hr;
@@ -115,8 +211,31 @@ void SimpleGame::DiscardDeviceResources()
 {
 	// CreateDeviceResources 함수에서 생성한 모든 자원들을 반납
 	SafeRelease(&m_pRenderTarget);
-	SafeRelease(&m_pLightSlateGrayBrush);
-	SafeRelease(&m_pCornflowerBlueBrush);
+	SafeRelease(&m_pGroundBitmap);
+	for (int i = 0; i < ELF_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pElfIdleBitmap[i]);
+	}
+	for (int i = 0; i < ELF_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pElfWalkBitmap[i]);
+	}
+	for (int i = 0; i < FIGHTER_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pFighterIdleBitmap[i]);
+	}
+	for (int i = 0; i < FIGHTER_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pFighterWalkBitmap[i]);
+	}
+	for (int i = 0; i < SORCERESS_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pSorceressIdleBitmap[i]);
+	}
+	for (int i = 0; i < SORCERESS_WALK_NUM; i++)
+	{
+		SAFE_RELEASE(m_pSorceressWalkBitmap[i]);
+	}
 }
 
 HRESULT SimpleGame::OnRender()
@@ -124,36 +243,33 @@ HRESULT SimpleGame::OnRender()
 	HRESULT hr = S_OK;
 	hr = CreateDeviceResources(); // 항상 호출되며, 렌더타겟이 유효하면 아무일도 하지 않음.
 	if (SUCCEEDED(hr)) { //렌더타겟이 유효함.
+
 		m_pRenderTarget->BeginDraw(); //그리기 시작.
 		m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity()); //변환행렬을 항등행렬로.
-		m_pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::White)); // 창을 클리어.
+		m_pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::Black)); // 창을 클리어.
 
 		D2D1_SIZE_F rtSize = m_pRenderTarget->GetSize(); //그리기 영역의 크기를 얻음.
 
-		// 배경 격자를 그림.
-		int width = static_cast<int>(rtSize.width);
-		int height = static_cast<int>(rtSize.height);
-		for (int x = 0; x < width; x += 10) {
-			m_pRenderTarget->DrawLine(D2D1::Point2F(static_cast<FLOAT>(x), 0.0f), D2D1::Point2F(static_cast<FLOAT>(x), rtSize.height), m_pLightSlateGrayBrush, 0.5f);
+		D2D1_SIZE_F bitmapSize = m_pGroundBitmap->GetSize();
+		// 지면 그리기
+		m_pRenderTarget->DrawBitmap(m_pGroundBitmap, D2D1::RectF(0, rtSize.height-100, rtSize.width, rtSize.height));
+
+		// 캐릭터 그리기
+		if (ELFState == IDLE)
+		{
+			bitmapSize = m_pElfIdleBitmap[ELFFrame]->GetSize();
+			m_pRenderTarget->DrawBitmap(m_pElfIdleBitmap[ELFFrame++], D2D1::RectF(300 - bitmapSize.width / 2, rtSize.height - 100 - bitmapSize.height, 300 + bitmapSize.width / 2, rtSize.height - 100));
+			if (ELFFrame >= ELF_IDLE_NUM) ELFFrame = 0;
 		}
-		for (int y = 0; y < height; y += 10) {
-			m_pRenderTarget->DrawLine(D2D1::Point2F(0.0f, static_cast<FLOAT>(y)),
-				D2D1::Point2F(rtSize.width, static_cast<FLOAT>(y)), m_pLightSlateGrayBrush, 0.5f);
+		if (ELFState == WALK)
+		{
+			bitmapSize = m_pElfWalkBitmap[ELFFrame]->GetSize();
+			m_pRenderTarget->DrawBitmap(m_pElfWalkBitmap[ELFFrame++], D2D1::RectF(300 - bitmapSize.width / 2, rtSize.height - 100 - bitmapSize.height, 300 + bitmapSize.width / 2, rtSize.height - 100));
+			if (ELFFrame >= ELF_WALK_NUM) ELFFrame = 0;
 		}
-		// 화면 중간에 두 사각형을 그림.
-		D2D1_RECT_F rectangle1 = D2D1::RectF(
-			rtSize.width / 2 - 50.0f, rtSize.height / 2 - 50.0f,
-			rtSize.width / 2 + 50.0f, rtSize.height / 2 + 50.0f);
-		D2D1_RECT_F rectangle2 = D2D1::RectF(
-			rtSize.width / 2 - 100.0f, rtSize.height / 2 - 100.0f,
-			rtSize.width / 2 + 100.0f, rtSize.height / 2 + 100.0f);
-		// 첫번째 사각형의 내부를 회색 브러시로 채워서 그림.
-		m_pRenderTarget->FillRectangle(&rectangle1, m_pLightSlateGrayBrush);
-		// 두번째 사각형의 외곽선을 파랑색 브러시로 그림.
-		m_pRenderTarget->DrawRectangle(&rectangle2, m_pCornflowerBlueBrush);
 		hr = m_pRenderTarget->EndDraw();  //그리기를 수행함. 성공하면 S_OK를 리턴함.
 	}
-
+	DiscardDeviceResources();
 	if (hr == D2DERR_RECREATE_TARGET) { // 렌더타겟을 재생성해야 함.
 		// 실행중에 D3D 장치가 소실된 경우,
 		hr = S_OK;
@@ -214,4 +330,76 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 			result = DefWindowProc(hwnd, message, wParam, lParam);
 	}
 	return result;
+}
+
+HRESULT SimpleGame::LoadBitmapFromFile(ID2D1RenderTarget* pRenderTarget, IWICImagingFactory* pIWICFactory, PCWSTR uri, UINT destinationWidth, UINT destinationHeight, ID2D1Bitmap** ppBitmap)
+{
+	IWICBitmapDecoder* pDecoder = NULL;
+	IWICBitmapFrameDecode* pSource = NULL;
+	IWICStream* pStream = NULL;
+	IWICFormatConverter* pConverter = NULL;
+	IWICBitmapScaler* pScaler = NULL;
+
+	HRESULT hr = pIWICFactory->CreateDecoderFromFilename(uri, NULL, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &pDecoder);
+
+	if (SUCCEEDED(hr))
+	{
+		// Create the initial frame.
+		hr = pDecoder->GetFrame(0, &pSource);
+	}
+	if (SUCCEEDED(hr))
+	{
+		// Convert the image format to 32bppPBGRA (DXGI_FORMAT_B8G8R8A8_UNORM + D2D1_ALPHA_MODE_PREMULTIPLIED).
+		hr = pIWICFactory->CreateFormatConverter(&pConverter);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		// If a new width or height was specified, create an IWICBitmapScaler and use it to resize the image.
+		if (destinationWidth != 0 || destinationHeight != 0)
+		{
+			UINT originalWidth, originalHeight;
+			hr = pSource->GetSize(&originalWidth, &originalHeight);
+			if (SUCCEEDED(hr))
+			{
+				if (destinationWidth == 0)
+				{
+					FLOAT scalar = static_cast<FLOAT>(destinationHeight) / static_cast<FLOAT>(originalHeight);
+					destinationWidth = static_cast<UINT>(scalar * static_cast<FLOAT>(originalWidth));
+				}
+				else if (destinationHeight == 0)
+				{
+					FLOAT scalar = static_cast<FLOAT>(destinationWidth) / static_cast<FLOAT>(originalWidth);
+					destinationHeight = static_cast<UINT>(scalar * static_cast<FLOAT>(originalHeight));
+				}
+
+				hr = pIWICFactory->CreateBitmapScaler(&pScaler);
+				if (SUCCEEDED(hr))
+				{
+					hr = pScaler->Initialize(pSource, destinationWidth, destinationHeight, WICBitmapInterpolationModeCubic);
+				}
+				if (SUCCEEDED(hr))
+				{
+					hr = pConverter->Initialize(pScaler, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+				}
+			}
+		}
+		else // Don't scale the image.
+		{
+			hr = pConverter->Initialize(pSource, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+		}
+	}
+	if (SUCCEEDED(hr))
+	{
+		// Create a Direct2D bitmap from the WIC bitmap.
+		hr = pRenderTarget->CreateBitmapFromWicBitmap(pConverter, NULL, ppBitmap);
+	}
+
+	SAFE_RELEASE(pDecoder);
+	SAFE_RELEASE(pSource);
+	SAFE_RELEASE(pStream);
+	SAFE_RELEASE(pConverter);
+	SAFE_RELEASE(pScaler);
+
+	return hr;
 }

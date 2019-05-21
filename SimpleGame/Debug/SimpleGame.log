@@ -1,2 +1,1 @@
-﻿  SimpleGame.cpp
-  SimpleGame.vcxproj -> C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\Debug\SimpleGame.exe
+﻿LINK : fatal error LNK1168: C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\Debug\SimpleGame.exe을(를) 쓰기용으로 열 수 없습니다.
