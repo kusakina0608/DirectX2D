@@ -13,6 +13,9 @@
 #include <d2d1helper.h>
 #include <dwrite.h>
 #include <wincodec.h>
+#include <Dwmapi.h>
+
+#include "Animation.h"
 
 #define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=NULL; } }
 
@@ -46,6 +49,8 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define FIGHTER_WALK_NUM 36
 #define SORCERESS_IDLE_NUM 31
 #define SORCERESS_WALK_NUM 12
+#define LEFT 0
+#define RIGHT 1
 
 class SimpleGame
 {
@@ -58,18 +63,53 @@ private:
 	IWICImagingFactory* m_pWICFactory;
 	// Ground.png를 위한 비트맵
 	ID2D1Bitmap* m_pGroundBitmap;
-	// ELF의 IDLE 상태를 위한 비트맵
-	ID2D1Bitmap* m_pElfIdleBitmap[ELF_IDLE_NUM];
-	// ELF의 WALK 상태를 위한 비트맵
-	ID2D1Bitmap* m_pElfWalkBitmap[ELF_WALK_NUM];
-	// FIGHTER의 IDLE 상태를 위한 비트맵
-	ID2D1Bitmap* m_pFighterIdleBitmap[FIGHTER_IDLE_NUM];
-	// FIGHTER의 WALK 상태를 위한 비트맵
-	ID2D1Bitmap* m_pFighterWalkBitmap[FIGHTER_WALK_NUM];
-	// SORCERESS의 IDLE 상태를 위한 비트맵
-	ID2D1Bitmap* m_pSorceressIdleBitmap[SORCERESS_IDLE_NUM];
-	// SORCERESS의 WALK 상태를 위한 비트맵
-	ID2D1Bitmap* m_pSorceressWalkBitmap[SORCERESS_WALK_NUM];
+	// Forest.jpg를 위한 비트맵
+	ID2D1Bitmap* m_pForestBitmap;
+	ID2D1Bitmap* m_pTreesBitmap;
+	ID2D1Bitmap* m_pBushesBitmap;
+
+	// ELF의 IDLE_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfIdleLBitmap[ELF_IDLE_NUM];
+	// ELF의 IDLE_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfIdleRBitmap[ELF_IDLE_NUM];
+
+	// ELF의 WALK_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfWalkLBitmap[ELF_WALK_NUM];
+	// ELF의 WALK_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pElfWalkRBitmap[ELF_WALK_NUM];
+
+	// FIGHTER의 IDLE_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterIdleLBitmap[FIGHTER_IDLE_NUM];
+	// FIGHTER의 IDLE_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterIdleRBitmap[FIGHTER_IDLE_NUM];
+
+	// FIGHTER의 WALK_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterWalkLBitmap[FIGHTER_WALK_NUM];
+	// FIGHTER의 WALK_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pFighterWalkRBitmap[FIGHTER_WALK_NUM];
+
+	// SORCERESS의 IDLE_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressIdleLBitmap[SORCERESS_IDLE_NUM];
+	// SORCERESS의 IDLE_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressIdleRBitmap[SORCERESS_IDLE_NUM];
+
+	// SORCERESS의 WALK_L 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressWalkLBitmap[SORCERESS_WALK_NUM];
+	// SORCERESS의 WALK_R 상태를 위한 비트맵
+	ID2D1Bitmap* m_pSorceressWalkRBitmap[SORCERESS_WALK_NUM];
+
+	// LightningBug
+	ID2D1Bitmap* m_pYellowBitmap;
+	ID2D1BitmapBrush* m_pYellowBitmapBrush;
+	ID2D1RectangleGeometry* m_pRectGeo;
+	ID2D1RadialGradientBrush* m_pRadialGradientBrush;
+
+	// 벌레의 이동 경로를 위한 PathGeometry
+	ID2D1PathGeometry* m_pPathGeometry;
+	AnimationEaseInOut m_Animation;
+
+	LARGE_INTEGER m_nPrevTime;
+	LARGE_INTEGER m_nFrequency;
 
 public:
 	SimpleGame();
