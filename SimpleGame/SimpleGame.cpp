@@ -4,9 +4,11 @@
 // playerState
 unsigned int ELFState = IDLE;
 unsigned int ELFFrame = 0;
+unsigned int ELFFaced = LEFT;
 
-unsigned int FIGHTERState = IDLE;
+unsigned int FIGHTERState = WALK;
 unsigned int FIGHTERFrame = 0;
+unsigned int FIGHTERFaced = LEFT;
 
 unsigned int SORCERESSState = IDLE;
 unsigned int SORCERESSFrame = 0;
@@ -16,6 +18,9 @@ unsigned int Bushes1Face = RIGHT;
 unsigned int Bushes2Face = RIGHT;
 
 D2D1_POINT_2F playerMove = D2D1::Point2F(0, 0);
+D2D1_POINT_2F elfMove = D2D1::Point2F(600, 0);
+D2D1_POINT_2F fighterMove = D2D1::Point2F(500, 0);
+
 float skewAngle1 = 3;
 float skewAngle2 = -8;
 
@@ -205,7 +210,7 @@ HRESULT SimpleGame::CreateDeviceIndependentResources()
 		pSink->AddBezier(D2D1::BezierSegment(
 			D2D1::Point2F(950, 80), D2D1::Point2F(850, 20), D2D1::Point2F(800, 0)));
 		pSink->AddBezier(D2D1::BezierSegment(
-			D2D1::Point2F(700, 100), D2D1::Point2F(200, 400), D2D1::Point2F(100, 500)));
+			D2D1::Point2F(700, 100), D2D1::Point2F(400, 100), D2D1::Point2F(100, 200)));
 		pSink->AddBezier(D2D1::BezierSegment(
 			D2D1::Point2F(50, 400), D2D1::Point2F(50, 200), D2D1::Point2F(100, 100)));
 
@@ -497,6 +502,148 @@ HRESULT SimpleGame::OnRender()
 
 		D2D1_POINT_2F ground = D2D1::Point2F(0, rtSize.height - 90);
 
+		// NPC: FIGHTER
+		if (FIGHTERState == IDLE)
+		{
+			if (FIGHTERFaced)
+			{
+				bitmapSize = m_pFighterIdleRBitmap[FIGHTERFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pFighterIdleRBitmap[FIGHTERFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + fighterMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + fighterMove.x,
+						ground.y));
+			}
+			else
+			{
+				bitmapSize = m_pFighterIdleLBitmap[FIGHTERFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pFighterIdleLBitmap[FIGHTERFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + fighterMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + fighterMove.x,
+						ground.y));
+			}
+			if (FIGHTERFrame / 3 >= FIGHTER_IDLE_NUM) FIGHTERFrame = 0;
+		}
+		else if (FIGHTERState == WALK)
+		{
+			if (FIGHTERFaced)
+			{
+				bitmapSize = m_pFighterWalkRBitmap[FIGHTERFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pFighterWalkRBitmap[FIGHTERFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + fighterMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + fighterMove.x,
+						ground.y));
+				if (fighterMove.x < 800)
+				{
+					fighterMove.x += 1;
+				}
+				else { FIGHTERFaced = LEFT; }
+			}
+			else
+			{
+				bitmapSize = m_pFighterWalkLBitmap[FIGHTERFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pFighterWalkLBitmap[FIGHTERFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + fighterMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + fighterMove.x,
+						ground.y));
+				if (fighterMove.x > -200)
+				{
+					fighterMove.x -= 1;
+				}
+				else { FIGHTERFaced = RIGHT; }
+			}
+			if (FIGHTERFrame / 3 >= FIGHTER_WALK_NUM) FIGHTERFrame = 0;
+		}
+
+		// NPC: ELF
+		if (ELFState == IDLE)
+		{
+			if (ELFFaced)
+			{
+				bitmapSize = m_pElfIdleRBitmap[ELFFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pElfIdleRBitmap[ELFFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + elfMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + elfMove.x,
+						ground.y));
+			}
+			else
+			{
+				bitmapSize = m_pElfIdleLBitmap[ELFFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pElfIdleLBitmap[ELFFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + elfMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + elfMove.x,
+						ground.y));
+			}
+			if (ELFFrame / 3 >= ELF_IDLE_NUM)
+			{
+				ELFFrame = 0;
+				if (rand() % 2 == 0)
+				{
+					ELFState = IDLE;
+				}
+				else
+				{
+					ELFState = WALK;
+				}
+			}
+		}
+		else if (ELFState == WALK)
+		{
+			if (ELFFaced)
+			{
+				bitmapSize = m_pElfWalkRBitmap[ELFFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pElfWalkRBitmap[ELFFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + elfMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + elfMove.x,
+						ground.y));
+				if (elfMove.x < 800)
+				{
+					elfMove.x += 3;
+				}
+				else { ELFFaced = LEFT; }
+			}
+			else
+			{
+				bitmapSize = m_pElfWalkLBitmap[ELFFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pElfWalkLBitmap[ELFFrame++ / 3],
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + elfMove.x,
+						ground.y - bitmapSize.height,
+						300 + bitmapSize.width / 2 + elfMove.x,
+						ground.y));
+				if (elfMove.x > -200)
+				{
+					elfMove.x -= 3;
+				}
+				else { ELFFaced = RIGHT; }
+			}
+			if (ELFFrame / 3 >= ELF_WALK_NUM)
+			{
+				ELFFrame = 0;
+				if (rand() % 2 == 0)
+				{
+					ELFState = IDLE;
+				}
+				else
+				{
+					ELFState = WALK;
+				}
+			}
+		}
+
 		// 캐릭터 그리기
 		if (SORCERESSState == IDLE)
 		{
@@ -526,14 +673,17 @@ HRESULT SimpleGame::OnRender()
 		{
 			if (SORCERESSFaced)
 			{
-				bitmapSize = m_pSorceressWalkRBitmap[SORCERESSFrame/3]->GetSize();
-				m_pRenderTarget->DrawBitmap(m_pSorceressWalkRBitmap[SORCERESSFrame++/3],
+				bitmapSize = m_pSorceressWalkRBitmap[SORCERESSFrame / 3]->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pSorceressWalkRBitmap[SORCERESSFrame++ / 3],
 					D2D1::RectF(
 						300 - bitmapSize.width / 2 + playerMove.x,
 						ground.y - bitmapSize.height,
 						300 + bitmapSize.width / 2 + playerMove.x,
 						ground.y));
-				playerMove.x += 3;
+				if (playerMove.x < 800)
+				{
+					playerMove.x += 3;
+				}
 			}
 			else
 			{
@@ -544,10 +694,14 @@ HRESULT SimpleGame::OnRender()
 						ground.y - bitmapSize.height,
 						300 + bitmapSize.width / 2 + playerMove.x,
 						ground.y));
-				playerMove.x -= 3;
+				if (playerMove.x > -250)
+				{
+					playerMove.x -= 3;
+				}
 			}
 			if (SORCERESSFrame/3 >= SORCERESS_WALK_NUM) SORCERESSFrame = 0;
 		}
+
 		if (skewAngle1 > 15) { Bushes1Face = LEFT; }
 		else if (skewAngle1 < -15) { Bushes1Face = RIGHT; }
 		if (Bushes1Face==RIGHT) { skewAngle1 += 0.3f; }
@@ -557,6 +711,7 @@ HRESULT SimpleGame::OnRender()
 		else if (skewAngle2 < -15) { Bushes2Face = RIGHT; }
 		if (Bushes2Face == RIGHT) { skewAngle2 += 0.3f; }
 		else if (Bushes2Face == LEFT) { skewAngle2 -= 0.15f; }
+
 		m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Skew(skewAngle1, 0, D2D1::Point2F(rtSize.width, rtSize.height)));
 		m_pRenderTarget->DrawBitmap(m_pBushesBitmap, D2D1::RectF(-100, rtSize.height - 300, rtSize.width + 300, rtSize.height));
 		m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -576,7 +731,7 @@ HRESULT SimpleGame::OnRender()
 		// 현재 시간에 해당하는 기하 길이에 일치하는 이동 동선 상의 지점을 얻음.
 		m_pPathGeometry->ComputePointAtLength(length, NULL, &point, &tangent);
 
-		D2D1::Matrix3x2F translation = D2D1::Matrix3x2F::Translation(100 + point.x, 50 + point.y);
+		D2D1::Matrix3x2F translation = D2D1::Matrix3x2F::Translation(50+point.x, 50 + point.y);
 		D2D1::Matrix3x2F scale = D2D1::Matrix3x2F::Scale(((skewAngle1+85.0f)/200.0f), ((skewAngle1 + 85.0f) / 200.0f));
 		m_pRenderTarget->SetTransform(scale* translation);
 		m_pRenderTarget->FillGeometry(m_pRectGeo, m_pYellowBitmapBrush, m_pRadialGradientBrush);
@@ -668,8 +823,24 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 					break;
 				case VK_SPACE:
 					break;
-				case 't':
-				case 'T':
+				case 'q':
+				case 'Q':
+				case 'w':
+				case 'W':
+				case 'e':
+				case 'E':
+				case 'r':
+				case 'R':
+				case 'a':
+				case 'A':
+				case 's':
+				case 'S':
+				case 'd':
+				case 'D':
+				case 'f':
+				case 'F':
+				case 'm':
+				case 'M':
 					break;
 				}
 			}
