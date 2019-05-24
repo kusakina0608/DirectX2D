@@ -41,6 +41,10 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define HINST_THISCOMPONENT ((HINSTANCE)&__ImageBase)
 #endif
 
+#define SCENE_OPENING 0
+#define SCENE_OPENING_TO_PLAY 1
+#define SCENE_PLAY 2
+
 #define IDLE 1
 #define WALK 2
 #define ELF_IDLE_NUM 21
@@ -61,12 +65,26 @@ private:
 
 	// 비트맵 로드를 위한 m_pWICFactory 객체
 	IWICImagingFactory* m_pWICFactory;
-	// Ground.png를 위한 비트맵
+
+	// 배경을 위한 비트맵
+	ID2D1Bitmap* m_pOpeningBackgroundBitmap;
 	ID2D1Bitmap* m_pGroundBitmap;
-	// Forest.jpg를 위한 비트맵
 	ID2D1Bitmap* m_pForestBitmap;
 	ID2D1Bitmap* m_pTreesBitmap;
 	ID2D1Bitmap* m_pBushesBitmap;
+	
+	// 텍스트
+	IDWriteFactory* m_pDWriteFactory;
+	IDWriteTextFormat* m_pTextFormat;
+	ID2D1SolidColorBrush* m_pBlackBrush;
+	ID2D1SolidColorBrush* m_pWhiteBrush;
+
+
+	ID2D1Bitmap* m_pTextBoxBitmap;
+	ID2D1Bitmap* m_pFrameBitmap;
+	/*--------------------------------------------------------------------------------*/
+	// ELF의 사진을 위한 비트맵
+	ID2D1Bitmap* m_pElfPortraitBitmap;
 
 	// ELF의 IDLE_L 상태를 위한 비트맵
 	ID2D1Bitmap* m_pElfIdleLBitmap[ELF_IDLE_NUM];
@@ -77,6 +95,9 @@ private:
 	ID2D1Bitmap* m_pElfWalkLBitmap[ELF_WALK_NUM];
 	// ELF의 WALK_R 상태를 위한 비트맵
 	ID2D1Bitmap* m_pElfWalkRBitmap[ELF_WALK_NUM];
+	/*--------------------------------------------------------------------------------*/
+	// FIGHTER의 사진을 위한 비트맵
+	ID2D1Bitmap* m_pFighterPortraitBitmap;
 
 	// FIGHTER의 IDLE_L 상태를 위한 비트맵
 	ID2D1Bitmap* m_pFighterIdleLBitmap[FIGHTER_IDLE_NUM];
@@ -87,6 +108,9 @@ private:
 	ID2D1Bitmap* m_pFighterWalkLBitmap[FIGHTER_WALK_NUM];
 	// FIGHTER의 WALK_R 상태를 위한 비트맵
 	ID2D1Bitmap* m_pFighterWalkRBitmap[FIGHTER_WALK_NUM];
+	/*--------------------------------------------------------------------------------*/
+	// SORCERESS의 사진을 위한 비트맵
+	ID2D1Bitmap* m_pSorceressPortraitBitmap;
 
 	// SORCERESS의 IDLE_L 상태를 위한 비트맵
 	ID2D1Bitmap* m_pSorceressIdleLBitmap[SORCERESS_IDLE_NUM];
@@ -97,6 +121,7 @@ private:
 	ID2D1Bitmap* m_pSorceressWalkLBitmap[SORCERESS_WALK_NUM];
 	// SORCERESS의 WALK_R 상태를 위한 비트맵
 	ID2D1Bitmap* m_pSorceressWalkRBitmap[SORCERESS_WALK_NUM];
+	/*--------------------------------------------------------------------------------*/
 
 	// LightningBug
 	ID2D1Bitmap* m_pYellowBitmap;

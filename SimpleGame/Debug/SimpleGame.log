@@ -1,3 +1,6 @@
 ﻿  SimpleGame.cpp
-C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\SimpleGame.cpp(719): warning C4305: '인수': 'double'에서 'FLOAT'(으)로 잘립니다.
+C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\SimpleGame.cpp(549): warning C4244: '인수': 'double'에서 'FLOAT'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\SimpleGame.cpp(590): warning C4244: '인수': 'double'에서 'FLOAT'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\SimpleGame.cpp(833): warning C4305: '인수': 'double'에서 'FLOAT'(으)로 잘립니다.
+C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\SimpleGame.cpp(864): warning C4244: '인수': 'double'에서 'FLOAT'(으)로 변환하면서 데이터가 손실될 수 있습니다.
   SimpleGame.vcxproj -> C:\Users\plati\Documents\GitHub\DirectX2D\SimpleGame\Debug\SimpleGame.exe
