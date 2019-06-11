@@ -14,8 +14,10 @@
 #include <dwrite.h>
 #include <wincodec.h>
 #include <Dwmapi.h>
+#include <strsafe.h>
 
 #include "Animation.h"
+#include "Sound.h"
 
 #define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=NULL; } }
 
@@ -41,9 +43,20 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define HINST_THISCOMPONENT ((HINSTANCE)&__ImageBase)
 #endif
 
+#define TRUE 1
+#define FALSE 0
+
 #define SCENE_OPENING 0
 #define SCENE_OPENING_TO_PLAY 1
 #define SCENE_PLAY 2
+
+#define CONV_PLAYER_01 1001
+#define CONV_PLAYER_02 1002
+#define CONV_PLAYER_03 1003
+#define CONV_ELF_01 2001
+#define CONV_ELF_02 2002
+#define CONV_ELF_03 2003
+#define CONV_FIGHTER_01 3001
 
 #define IDLE 1
 #define WALK 2
@@ -55,6 +68,18 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define SORCERESS_WALK_NUM 12
 #define LEFT 0
 #define RIGHT 1
+
+#define NUM_SOUND 8
+
+//--------------------------------------------------------------------------------------
+// Helper macros
+//--------------------------------------------------------------------------------------
+#ifndef SAFE_DELETE_ARRAY
+#define SAFE_DELETE_ARRAY(p) { if(p) { delete[] (p);   (p)=NULL; } }
+#endif
+#ifndef SAFE_RELEASE
+#define SAFE_RELEASE(p)      { if(p) { (p)->Release(); (p)=NULL; } }
+#endif
 
 class SimpleGame
 {
@@ -72,13 +97,15 @@ private:
 	ID2D1Bitmap* m_pForestBitmap;
 	ID2D1Bitmap* m_pTreesBitmap;
 	ID2D1Bitmap* m_pBushesBitmap;
-	
+
 	// 텍스트
 	IDWriteFactory* m_pDWriteFactory;
 	IDWriteTextFormat* m_pTextFormat;
 	ID2D1SolidColorBrush* m_pBlackBrush;
 	ID2D1SolidColorBrush* m_pWhiteBrush;
 
+
+	ID2D1Bitmap* m_pChatIconBitmap;
 
 	ID2D1Bitmap* m_pTextBoxBitmap;
 	ID2D1Bitmap* m_pFrameBitmap;
@@ -122,7 +149,12 @@ private:
 	// SORCERESS의 WALK_R 상태를 위한 비트맵
 	ID2D1Bitmap* m_pSorceressWalkRBitmap[SORCERESS_WALK_NUM];
 	/*--------------------------------------------------------------------------------*/
-
+	ID2D1Bitmap* m_pGoodBitmap[4];
+	/*--------------------------------------------------------------------------------*/
+	ID2D1Bitmap* m_pBadBitmap[4];
+	/*--------------------------------------------------------------------------------*/
+	ID2D1Bitmap* m_pPlayerBitmap[4];
+	/*--------------------------------------------------------------------------------*/
 	// LightningBug
 	ID2D1Bitmap* m_pYellowBitmap;
 	ID2D1BitmapBrush* m_pYellowBitmapBrush;
@@ -147,6 +179,7 @@ private:
 	HRESULT CreateDeviceResources(); // 장치 의존 자원들을 초기화
 	void DiscardDeviceResources(); // 장치 의존 자원들을 반납
 	HRESULT OnRender(); // 내용을 그리기
+	void DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F rtSize, int convNo);
 	void OnResize(UINT width, UINT height); // 렌더타겟을 resize
 	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 	HRESULT LoadBitmapFromFile(ID2D1RenderTarget* pRenderTarget, IWICImagingFactory* pIWICFactory, PCWSTR uri, UINT destinationWidth, UINT destinationHeight, ID2D1Bitmap** ppBitmap);

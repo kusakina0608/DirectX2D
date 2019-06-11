@@ -3,23 +3,46 @@
 #include "Animation.h"
 // playerState
 
+
+static const WCHAR PlayerInfo[] = L"유혜린(25세, 공무원)";
+static const WCHAR ElfInfo[] = L"재개발 구역 거주민(23세, 취업 준비생)";
+static const WCHAR FighterInfo[] = L"한상정(27세, 용역 깡패)";
+
 static const WCHAR sc_OpeningStory[] =
 L"인천시 시청 공무원이 되기위해 3년동안 공부한 유혜린(25세, 기술직 공무원).\n\n\n결국 3년의 공부끝에 시청 공무원이 되었다.\n\n\n그녀는 첫 업무로 재개발 구역으로 지정된 숲에 사는 시민들에게 퇴거명령을 보낸다.\n\n\n(엔터 키를 눌러서 계속)";
 static int OpeningTextLen = ARRAYSIZE(sc_OpeningStory);
+
 static const WCHAR sc_PlayerScript1[] = L"여기가 재개발 구역인가..?";
+static const WCHAR sc_PlayerScript2[] = L"어쩌지?";
+static const WCHAR sc_PlayerScript3[] = L"도와준다(Y)    거절한다(N)";
 static int PlayerScript1Len = ARRAYSIZE(sc_PlayerScript1);
+static int PlayerScript2Len = ARRAYSIZE(sc_PlayerScript2);
+static int PlayerScript3Len = ARRAYSIZE(sc_PlayerScript3);
+
+static const WCHAR sc_FighterScript1[] = L"노후... 건물... 부순다...";
+static int FighterScript1Len = ARRAYSIZE(sc_FighterScript1);
+
+static const WCHAR sc_ElfScript1[] = L"내 집...";
+static const WCHAR sc_ElfScript2[] = L"저기 있는 깡패가 저희 집을 부수려고 해요 도와주세요!!";
+static const WCHAR sc_ElfScript3[] = L"캭~ 퉷!";
+static int ElfScript1Len = ARRAYSIZE(sc_ElfScript1);
+static int ElfScript2Len = ARRAYSIZE(sc_ElfScript2);
+static int ElfScript3Len = ARRAYSIZE(sc_ElfScript3);
 
 int sceneNo = SCENE_OPENING;
 double opacity = 0.0;
-int scenePlayState = 0;
+int ConversationDisplayed = FALSE;
+int convNo = CONV_PLAYER_01;
 
 unsigned int ELFState = IDLE;
 unsigned int ELFFrame = 0;
 unsigned int ELFFaced = LEFT;
+unsigned int ELFChatTrigger = 0;
 
 unsigned int FIGHTERState = WALK;
 unsigned int FIGHTERFrame = 0;
 unsigned int FIGHTERFaced = LEFT;
+unsigned int FIGHTERChatTrigger = 0;
 
 unsigned int SORCERESSState = IDLE;
 unsigned int SORCERESSFrame = 0;
@@ -27,13 +50,14 @@ unsigned int SORCERESSFaced = RIGHT;
 
 unsigned int Bushes1Face = RIGHT;
 unsigned int Bushes2Face = RIGHT;
-
 D2D1_POINT_2F playerMove = D2D1::Point2F(0, 0);
 D2D1_POINT_2F elfMove = D2D1::Point2F(600, 0);
 D2D1_POINT_2F fighterMove = D2D1::Point2F(500, 0);
 
 float skewAngle1 = 3;
 float skewAngle2 = -8;
+
+CSoundManager* soundManager = NULL;
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -67,6 +91,7 @@ SimpleGame::SimpleGame() :
 	m_pBlackBrush(NULL),
 	m_pWhiteBrush(NULL),
 	m_pTextBoxBitmap(NULL),
+	m_pChatIconBitmap(NULL),
 	m_pFrameBitmap(NULL),
 	m_pBushesBitmap(NULL),
 	m_pYellowBitmap(NULL),
@@ -87,7 +112,10 @@ SimpleGame::SimpleGame() :
 	m_pSorceressIdleLBitmap(),
 	m_pSorceressIdleRBitmap(),
 	m_pSorceressWalkLBitmap(),
-	m_pSorceressWalkRBitmap()
+	m_pSorceressWalkRBitmap(),
+	m_pGoodBitmap(),
+	m_pBadBitmap(),
+	m_pPlayerBitmap()
 {
 }
 
@@ -111,6 +139,7 @@ SimpleGame::~SimpleGame()
 	SAFE_RELEASE(m_pWhiteBrush);
 
 	SAFE_RELEASE(m_pTextBoxBitmap);
+	SAFE_RELEASE(m_pChatIconBitmap);
 	SAFE_RELEASE(m_pFrameBitmap);
 
 	// LightningBug
@@ -156,10 +185,37 @@ SimpleGame::~SimpleGame()
 		SAFE_RELEASE(m_pSorceressWalkRBitmap[i]);
 	}
 	/*--------------------------------------------------------------------------------*/
+	for (int i = 0; i < 4; i++)
+	{
+		SAFE_RELEASE(m_pGoodBitmap[i]);
+		SAFE_RELEASE(m_pBadBitmap[i]);
+		SAFE_RELEASE(m_pPlayerBitmap[i]);
+	}
+	/*--------------------------------------------------------------------------------*/
 }
 
 HRESULT SimpleGame::Initialize() {
 	HRESULT hr = CreateDeviceIndependentResources(); //장치 독립적 자원들을 초기화함
+
+	soundManager = new CSoundManager;
+
+	PCWSTR str[NUM_SOUND] = { 
+		L".\\Sound\\BGM\\MainMusic.wav",
+		L".\\Sound\\BGM\\Forest.wav",
+		L".\\Sound\\Effect\\Alert.wav",
+		L".\\Sound\\Effect\\Return.wav",
+		L".\\Sound\\Effect\\Running.wav",
+		L".\\Sound\\Effect\\Aww.wav",
+		L".\\Sound\\Effect\\Busunda.wav",
+		L".\\Sound\\Effect\\Laugh.wav"
+	};
+
+	for (int i = 0; i < NUM_SOUND; i++) {
+		wchar_t strFilePath[100] = { 0, };
+		lstrcpy(strFilePath, str[i]);
+		if (!soundManager->add(strFilePath, i))
+			return FALSE;			//버튼음
+	}
 
 	if (SUCCEEDED(hr)) {
 		WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
@@ -374,6 +430,7 @@ HRESULT SimpleGame::CreateDeviceResources()
 			pGradientStops->Release();
 		}
 		hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\TextBox.png", 0, 0, &m_pTextBoxBitmap);
+		hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\chat.png", 0, 0, &m_pChatIconBitmap);
 		hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\frame.png", 0, 0, &m_pFrameBitmap);
 		/*--------------------------------------------------------------------------------*/
 		hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\jpg\\ELF.jpg", 0, 0, &m_pElfPortraitBitmap);
@@ -454,6 +511,22 @@ HRESULT SimpleGame::CreateDeviceResources()
 			}
 		}
 		/*--------------------------------------------------------------------------------*/
+		if (SUCCEEDED(hr))
+		{
+			for (int i = 0; i < SORCERESS_WALK_NUM; i++)
+			{
+				wchar_t good[100];
+				wsprintf(good, L".\\Image\\character\\good_%d.png", 2 * i + 2);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, good, 0, 0, &m_pGoodBitmap[i]);
+				wchar_t bad[100];
+				wsprintf(bad, L".\\Image\\character\\bad_%d.png", 2 * i + 2);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, bad, 0, 0, &m_pBadBitmap[i]);
+				wchar_t player[100];
+				wsprintf(player, L".\\Image\\character\\player_%d.png", 2 * i + 2);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, player, 0, 0, &m_pPlayerBitmap[i]);
+			}
+		}
+		/*--------------------------------------------------------------------------------*/
 	}
 	return hr;
 }
@@ -470,6 +543,7 @@ void SimpleGame::DiscardDeviceResources()
 	SafeRelease(&m_pYellowBitmapBrush);
 	SafeRelease(&m_pRadialGradientBrush);
 	SafeRelease(&m_pTextBoxBitmap);
+	SafeRelease(&m_pChatIconBitmap);
 	SafeRelease(&m_pFrameBitmap);
 	/*--------------------------------------------------------------------------------*/
 	SafeRelease(&m_pElfPortraitBitmap);
@@ -508,6 +582,183 @@ void SimpleGame::DiscardDeviceResources()
 		SAFE_RELEASE(m_pSorceressWalkRBitmap[i]);
 	}
 	/*--------------------------------------------------------------------------------*/
+	for (int i = 0; i < 4; i++)
+	{
+		SAFE_RELEASE(m_pGoodBitmap[i]);
+		SAFE_RELEASE(m_pBadBitmap[i]);
+		SAFE_RELEASE(m_pPlayerBitmap[i]);
+	}
+	/*--------------------------------------------------------------------------------*/
+}
+
+void DrawCharacter(ID2D1HwndRenderTarget* m_pRenderTarget, ID2D1Bitmap** character, int frame, D2D1_POINT_2F position, D2D1_POINT_2F ground)
+{
+
+	D2D1_SIZE_F bitmapSize;
+	bitmapSize = character[frame / 3]->GetSize();
+	m_pRenderTarget->DrawBitmap(character[frame++ / 3],
+		D2D1::RectF(
+			300 - bitmapSize.width / 2 + position.x,
+			ground.y - bitmapSize.height,
+			300 + bitmapSize.width / 2 + position.x,
+			ground.y));
+}
+
+void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F rtSize, int convNo)
+{
+	m_pRenderTarget->DrawBitmap(m_pTextBoxBitmap, D2D1::RectF(30, rtSize.height - 230, rtSize.width - 30, rtSize.height - 30), 0.5);
+	m_pRenderTarget->DrawBitmap(m_pPortraitBitmap, D2D1::RectF(70, rtSize.height - 200, 210, rtSize.height - 60));
+	m_pRenderTarget->DrawBitmap(m_pFrameBitmap, D2D1::RectF(70, rtSize.height - 200, 210, rtSize.height - 60));
+
+
+	switch (convNo)
+	{
+	case CONV_PLAYER_01:
+		m_pRenderTarget->DrawText(
+			PlayerInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_PlayerScript1,
+			ARRAYSIZE(sc_PlayerScript1) - PlayerScript1Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (PlayerScript1Len > 1)
+		{
+			PlayerScript1Len--;
+			soundManager->play(7);
+		}
+		break;
+	case CONV_PLAYER_02:
+		m_pRenderTarget->DrawText(
+			PlayerInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_PlayerScript2,
+			ARRAYSIZE(sc_PlayerScript2) - PlayerScript2Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (PlayerScript2Len > 1)
+		{
+			PlayerScript2Len--;
+			soundManager->play(7);
+		}
+		break;
+	case CONV_PLAYER_03:
+		m_pRenderTarget->DrawText(
+			PlayerInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_PlayerScript3,
+			ARRAYSIZE(sc_PlayerScript3) - PlayerScript3Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (PlayerScript3Len > 1)
+		{
+			PlayerScript3Len--;
+			soundManager->play(7);
+		}
+		break;
+	case CONV_FIGHTER_01:
+		m_pRenderTarget->DrawText(
+			FighterInfo,
+			ARRAYSIZE(FighterInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_FighterScript1,
+			ARRAYSIZE(sc_FighterScript1) - FighterScript1Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (FighterScript1Len > 1)
+		{
+			FighterScript1Len--;
+		}
+		break;
+	case CONV_ELF_01:
+		m_pRenderTarget->DrawText(
+			ElfInfo,
+			ARRAYSIZE(ElfInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfScript1,
+			ARRAYSIZE(sc_ElfScript1) - ElfScript1Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfScript1Len > 1)
+		{
+			ElfScript1Len--;
+		}
+		break;
+	case CONV_ELF_02:
+		m_pRenderTarget->DrawText(
+			ElfInfo,
+			ARRAYSIZE(ElfInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfScript2,
+			ARRAYSIZE(sc_ElfScript2) - ElfScript2Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfScript2Len > 1)
+		{
+			ElfScript2Len--;
+		}
+		break;
+	case CONV_ELF_03:
+		m_pRenderTarget->DrawText(
+			ElfInfo,
+			ARRAYSIZE(ElfInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfScript3,
+			ARRAYSIZE(sc_ElfScript3) - ElfScript3Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfScript3Len > 1)
+		{
+			ElfScript3Len--;
+		}
+		break;
+	}
+
+
 }
 
 HRESULT SimpleGame::OnRender()
@@ -528,6 +779,7 @@ HRESULT SimpleGame::OnRender()
 
 		if ((sceneNo == SCENE_OPENING) || (sceneNo == SCENE_OPENING_TO_PLAY))
 		{
+			soundManager->play(0);
 			m_pRenderTarget->DrawBitmap(m_pOpeningBackgroundBitmap, D2D1::RectF(0, 0, rtSize.width, rtSize.height));
 
 			hr = m_pRenderTarget->CreateLayer(NULL, &pLayer);
@@ -574,6 +826,7 @@ HRESULT SimpleGame::OnRender()
 			}
 			if (sceneNo == SCENE_OPENING_TO_PLAY)
 			{
+				soundManager->stop(0);
 				if (SUCCEEDED(hr))
 				{
 					if (opacity < 1.0)
@@ -605,6 +858,7 @@ HRESULT SimpleGame::OnRender()
 		}
 		if (sceneNo == SCENE_PLAY)
 		{
+			soundManager->play(1);
 			// 배경 그리기
 			m_pRenderTarget->DrawBitmap(m_pForestBitmap, D2D1::RectF(0, 0, rtSize.width, rtSize.height));
 			// 나무 그리기
@@ -619,54 +873,30 @@ HRESULT SimpleGame::OnRender()
 			// NPC: FIGHTER
 			if (FIGHTERState == IDLE)
 			{
-				if (FIGHTERFaced)
+				if (FIGHTERFaced == RIGHT)
 				{
-					bitmapSize = m_pFighterIdleRBitmap[FIGHTERFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pFighterIdleRBitmap[FIGHTERFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + fighterMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + fighterMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pFighterIdleRBitmap, FIGHTERFrame++, fighterMove, ground);
 				}
-				else
+				else // FIGHTERFaced == LEFT
 				{
-					bitmapSize = m_pFighterIdleLBitmap[FIGHTERFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pFighterIdleLBitmap[FIGHTERFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + fighterMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + fighterMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pFighterIdleLBitmap, FIGHTERFrame++, fighterMove, ground);
 				}
 				if (FIGHTERFrame / 3 >= FIGHTER_IDLE_NUM) FIGHTERFrame = 0;
 			}
 			else if (FIGHTERState == WALK)
 			{
-				if (FIGHTERFaced)
+				if (FIGHTERFaced == RIGHT)
 				{
-					bitmapSize = m_pFighterWalkRBitmap[FIGHTERFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pFighterWalkRBitmap[FIGHTERFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + fighterMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + fighterMove.x,
-							ground.y));
-					if (fighterMove.x < 800)
+					DrawCharacter(m_pRenderTarget, m_pFighterWalkRBitmap, FIGHTERFrame++, fighterMove, ground);
+					if (fighterMove.x < 600)
 					{
 						fighterMove.x += 1;
 					}
 					else { FIGHTERFaced = LEFT; }
 				}
-				else
+				else // FIGHTERFaced == LEFT
 				{
-					bitmapSize = m_pFighterWalkLBitmap[FIGHTERFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pFighterWalkLBitmap[FIGHTERFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + fighterMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + fighterMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pFighterWalkLBitmap, FIGHTERFrame++, fighterMove, ground);
 					if (fighterMove.x > -200)
 					{
 						fighterMove.x -= 1;
@@ -681,23 +911,11 @@ HRESULT SimpleGame::OnRender()
 			{
 				if (ELFFaced)
 				{
-					bitmapSize = m_pElfIdleRBitmap[ELFFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pElfIdleRBitmap[ELFFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + elfMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + elfMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pElfIdleRBitmap, ELFFrame++, elfMove, ground);
 				}
 				else
 				{
-					bitmapSize = m_pElfIdleLBitmap[ELFFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pElfIdleLBitmap[ELFFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + elfMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + elfMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pElfIdleLBitmap, ELFFrame++, elfMove, ground);
 				}
 				if (ELFFrame / 3 >= ELF_IDLE_NUM)
 				{
@@ -716,13 +934,7 @@ HRESULT SimpleGame::OnRender()
 			{
 				if (ELFFaced)
 				{
-					bitmapSize = m_pElfWalkRBitmap[ELFFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pElfWalkRBitmap[ELFFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + elfMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + elfMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pElfWalkRBitmap, ELFFrame++, elfMove, ground);
 					if (elfMove.x < 800)
 					{
 						elfMove.x += 3;
@@ -731,14 +943,8 @@ HRESULT SimpleGame::OnRender()
 				}
 				else
 				{
-					bitmapSize = m_pElfWalkLBitmap[ELFFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pElfWalkLBitmap[ELFFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + elfMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + elfMove.x,
-							ground.y));
-					if (elfMove.x > -200)
+					DrawCharacter(m_pRenderTarget, m_pElfWalkLBitmap, ELFFrame++, elfMove, ground);
+					if (elfMove.x > 600)
 					{
 						elfMove.x -= 3;
 					}
@@ -761,39 +967,23 @@ HRESULT SimpleGame::OnRender()
 			// 캐릭터 그리기
 			if (SORCERESSState == IDLE)
 			{
+				soundManager->stop(4);
 				if (SORCERESSFaced)
 				{
-					bitmapSize = m_pSorceressIdleRBitmap[SORCERESSFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pSorceressIdleRBitmap[SORCERESSFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + playerMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + playerMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pSorceressIdleRBitmap, SORCERESSFrame++, playerMove, ground);
 				}
 				else
 				{
-					bitmapSize = m_pSorceressIdleLBitmap[SORCERESSFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pSorceressIdleLBitmap[SORCERESSFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + playerMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + playerMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pSorceressIdleLBitmap, SORCERESSFrame++, playerMove, ground);
 				}
 				if (SORCERESSFrame / 3 >= SORCERESS_IDLE_NUM) SORCERESSFrame = 0;
 			}
 			else if (SORCERESSState == WALK)
 			{
+				soundManager->play(4);
 				if (SORCERESSFaced)
 				{
-					bitmapSize = m_pSorceressWalkRBitmap[SORCERESSFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pSorceressWalkRBitmap[SORCERESSFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + playerMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + playerMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pSorceressWalkRBitmap, SORCERESSFrame++, playerMove, ground);
 					if (playerMove.x < 800)
 					{
 						playerMove.x += 3;
@@ -801,13 +991,7 @@ HRESULT SimpleGame::OnRender()
 				}
 				else
 				{
-					bitmapSize = m_pSorceressWalkLBitmap[SORCERESSFrame / 3]->GetSize();
-					m_pRenderTarget->DrawBitmap(m_pSorceressWalkLBitmap[SORCERESSFrame++ / 3],
-						D2D1::RectF(
-							300 - bitmapSize.width / 2 + playerMove.x,
-							ground.y - bitmapSize.height,
-							300 + bitmapSize.width / 2 + playerMove.x,
-							ground.y));
+					DrawCharacter(m_pRenderTarget, m_pSorceressWalkLBitmap, SORCERESSFrame++, playerMove, ground);
 					if (playerMove.x > -250)
 					{
 						playerMove.x -= 3;
@@ -815,6 +999,32 @@ HRESULT SimpleGame::OnRender()
 				}
 				if (SORCERESSFrame / 3 >= SORCERESS_WALK_NUM) SORCERESSFrame = 0;
 			}
+
+			if (fighterMove.x + 100 > playerMove.x && fighterMove.x - 100 < playerMove.x)
+			{
+				bitmapSize = m_pChatIconBitmap->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pChatIconBitmap,
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + fighterMove.x,
+						ground.y - bitmapSize.height - 230,
+						300 + bitmapSize.width / 2 + fighterMove.x,
+						ground.y - 230));
+				FIGHTERChatTrigger = 1;
+			}
+			else { FIGHTERChatTrigger = 0; }
+
+			if (elfMove.x + 100 > playerMove.x && elfMove.x - 100 < playerMove.x)
+			{
+				bitmapSize = m_pChatIconBitmap->GetSize();
+				m_pRenderTarget->DrawBitmap(m_pChatIconBitmap,
+					D2D1::RectF(
+						300 - bitmapSize.width / 2 + elfMove.x,
+						ground.y - bitmapSize.height - 230,
+						300 + bitmapSize.width / 2 + elfMove.x,
+						ground.y - 230));
+				ELFChatTrigger = 1;
+			}
+			else { ELFChatTrigger = 0; }
 
 			if (skewAngle1 > 15) { Bushes1Face = LEFT; }
 			else if (skewAngle1 < -15) { Bushes1Face = RIGHT; }
@@ -873,27 +1083,37 @@ HRESULT SimpleGame::OnRender()
 			SAFE_RELEASE(pLayer);
 			if (opacity <= 0)
 			{
-				switch (scenePlayState)
+				switch (ConversationDisplayed)
 				{
-				case 0:
-					m_pRenderTarget->DrawBitmap(m_pTextBoxBitmap, D2D1::RectF(30, rtSize.height - 230, rtSize.width - 30, rtSize.height - 30), 0.5);
-					m_pRenderTarget->DrawBitmap(m_pSorceressPortraitBitmap, D2D1::RectF(70, rtSize.height - 200, 210, rtSize.height - 60));
-					m_pRenderTarget->DrawBitmap(m_pFrameBitmap, D2D1::RectF(70, rtSize.height - 200, 210, rtSize.height - 60));
-					
-
-					m_pRenderTarget->DrawText(
-						sc_PlayerScript1,
-						ARRAYSIZE(sc_PlayerScript1) - PlayerScript1Len,
-						m_pTextFormat,
-						D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
-						m_pWhiteBrush
-					);
-					if (PlayerScript1Len > 1)
+				case TRUE:
+					switch (convNo)
 					{
-						PlayerScript1Len--;
+					case CONV_PLAYER_01:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_01);
+						break;
+					case CONV_PLAYER_02:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_02);
+						break;
+					case CONV_PLAYER_03:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_03);
+						break;
+					case CONV_FIGHTER_01:
+						DisplayConversation(m_pFighterPortraitBitmap, rtSize, CONV_FIGHTER_01);
+						break;
+					case CONV_ELF_01:
+						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_01);
+						break;
+					case CONV_ELF_02:
+						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_02);
+						break;
+					case CONV_ELF_03:
+						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_03);
+						break;
+					default:
+						break;
 					}
 					break;
-				case 1:
+				case FALSE:
 					break;
 				default:
 					break;
@@ -977,33 +1197,44 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 				case VK_DOWN:
 					break;
 				case VK_LEFT:
-					if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
-					SORCERESSFaced = LEFT;
-					SORCERESSState = WALK;
+					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+					{
+						if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
+						SORCERESSFaced = LEFT;
+						SORCERESSState = WALK;
+					}
 					break;
 				case VK_RIGHT:
-					if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
-					SORCERESSFaced = RIGHT;
-					SORCERESSState = WALK;
+					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+					{
+						if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
+						SORCERESSFaced = RIGHT;
+						SORCERESSState = WALK;
+					}
 					break;
 				case VK_SPACE:
 					break;
-				case 'q':
-				case 'Q':
-				case 'w':
-				case 'W':
-				case 'e':
-				case 'E':
-				case 'r':
-				case 'R':
-				case 'a':
-				case 'A':
-				case 's':
-				case 'S':
-				case 'd':
-				case 'D':
+					break;
 				case 'f':
 				case 'F':
+					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+					{
+						if (FIGHTERChatTrigger == TRUE) {
+							FighterScript1Len = ARRAYSIZE(sc_FighterScript1);
+							convNo = CONV_FIGHTER_01;
+							ConversationDisplayed = TRUE;
+							SORCERESSState = IDLE;
+							soundManager->play(6);
+						}
+						else if (ELFChatTrigger == TRUE) {
+							ElfScript1Len = ARRAYSIZE(sc_ElfScript1);
+							convNo = CONV_ELF_01;
+							ConversationDisplayed = TRUE;
+							SORCERESSState = IDLE;
+							soundManager->play(5);
+						}
+					}
+					break;
 				case 'm':
 				case 'M':
 					break;
@@ -1020,16 +1251,44 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 					switch (sceneNo)
 					{
 					case SCENE_OPENING:
+						soundManager->stop(0);
+						soundManager->play(2);
 						sceneNo = SCENE_OPENING_TO_PLAY;
+						ConversationDisplayed = TRUE;
 						break;
 					case SCENE_PLAY:
-						switch (scenePlayState)
+						switch (ConversationDisplayed)
 						{
-						case 0:
+						case TRUE:
+							soundManager->play(3);
 							if (PlayerScript1Len <= 1)
 							{
-								scenePlayState = 1;
+								switch (convNo)
+								{
+								case CONV_ELF_01:
+									convNo = CONV_ELF_02;
+									break;
+								case CONV_ELF_02:
+									convNo = CONV_PLAYER_02;
+									break;
+								case CONV_PLAYER_02:
+									convNo = CONV_PLAYER_03;
+									break;
+								case CONV_PLAYER_03:
+									convNo = CONV_ELF_03;
+									break;
+								case CONV_PLAYER_01:
+								case CONV_ELF_03:
+								case CONV_FIGHTER_01:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									break;
+								}
 							}
+							break;
+						case FALSE:
 							break;
 						default:
 							break;
@@ -1043,14 +1302,20 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 				case VK_DOWN:
 					break;
 				case VK_LEFT:
-					if (SORCERESSState == WALK) { SORCERESSFrame = 0; }
-					SORCERESSFaced = LEFT;
-					SORCERESSState = IDLE;
+					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+					{
+						if (SORCERESSState == WALK) { SORCERESSFrame = 0; }
+						SORCERESSFaced = LEFT;
+						SORCERESSState = IDLE;
+					}
 					break;
 				case VK_RIGHT:
-					if (SORCERESSState == WALK) { SORCERESSFrame = 0; }
-					SORCERESSFaced = RIGHT;
-					SORCERESSState = IDLE;
+					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+					{
+						if (SORCERESSState == WALK) { SORCERESSFrame = 0; }
+						SORCERESSFaced = RIGHT;
+						SORCERESSState = IDLE;
+					}
 					break;
 				case VK_SPACE:
 					break;
