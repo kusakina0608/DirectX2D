@@ -3,62 +3,20 @@
 #include "Animation.h"
 // playerState
 
-
-static const WCHAR PlayerInfo[] = L"유혜린(25세, 공무원)";
-static const WCHAR ElfInfo[] = L"재개발 구역 거주민(23세, 취업 준비생)";
-static const WCHAR FighterInfo[] = L"한상정(27세, 용역 깡패)";
-
-static const WCHAR sc_OpeningStory[] =
-L"인천시 시청 공무원이 되기위해 3년동안 공부한 유혜린(25세, 기술직 공무원).\n\n\n결국 3년의 공부끝에 시청 공무원이 되었다.\n\n\n그녀는 첫 업무로 재개발 구역으로 지정된 숲에 사는 시민들에게 퇴거명령을 보낸다.\n\n\n(엔터 키를 눌러서 계속)";
-static int OpeningTextLen = ARRAYSIZE(sc_OpeningStory);
-
-static const WCHAR sc_PlayerScript1[] = L"여기가 재개발 구역인가..?";
-static const WCHAR sc_PlayerScript2[] = L"어쩌지?";
-static const WCHAR sc_PlayerScript3[] = L"도와준다(Y)    거절한다(N)";
-static int PlayerScript1Len = ARRAYSIZE(sc_PlayerScript1);
-static int PlayerScript2Len = ARRAYSIZE(sc_PlayerScript2);
-static int PlayerScript3Len = ARRAYSIZE(sc_PlayerScript3);
-
-static const WCHAR sc_FighterScript1[] = L"노후... 건물... 부순다...";
-static int FighterScript1Len = ARRAYSIZE(sc_FighterScript1);
-
-static const WCHAR sc_ElfScript1[] = L"내 집...";
-static const WCHAR sc_ElfScript2[] = L"저기 있는 깡패가 저희 집을 부수려고 해요 도와주세요!!";
-static const WCHAR sc_ElfScript3[] = L"캭~ 퉷!";
-static int ElfScript1Len = ARRAYSIZE(sc_ElfScript1);
-static int ElfScript2Len = ARRAYSIZE(sc_ElfScript2);
-static int ElfScript3Len = ARRAYSIZE(sc_ElfScript3);
-
-int sceneNo = SCENE_OPENING;
-double opacity = 0.0;
-int ConversationDisplayed = FALSE;
-int convNo = CONV_PLAYER_01;
-
-unsigned int ELFState = IDLE;
-unsigned int ELFFrame = 0;
-unsigned int ELFFaced = LEFT;
-unsigned int ELFChatTrigger = 0;
-
-unsigned int FIGHTERState = WALK;
-unsigned int FIGHTERFrame = 0;
-unsigned int FIGHTERFaced = LEFT;
-unsigned int FIGHTERChatTrigger = 0;
-
-unsigned int SORCERESSState = IDLE;
-unsigned int SORCERESSFrame = 0;
-unsigned int SORCERESSFaced = RIGHT;
-
-unsigned int Bushes1Face = RIGHT;
-unsigned int Bushes2Face = RIGHT;
-D2D1_POINT_2F playerMove = D2D1::Point2F(0, 0);
-D2D1_POINT_2F elfMove = D2D1::Point2F(600, 0);
-D2D1_POINT_2F fighterMove = D2D1::Point2F(500, 0);
-
-float skewAngle1 = 3;
-float skewAngle2 = -8;
-
 CSoundManager* soundManager = NULL;
 
+DWORD fighterStateTransitions[][3] = {
+		{ Fighter::STATE_STOP, Fighter::EVENT_STARTWALK, Fighter::STATE_WALK },
+		{ Fighter::STATE_STOP, Fighter::EVENT_TALK, Fighter::STATE_TALK },
+		{ Fighter::STATE_WALK, Fighter::EVENT_TALK, Fighter::STATE_TALK },
+		{ Fighter::STATE_WALK, Fighter::EVENT_STOPWALK, Fighter::STATE_STOP },
+		{ Fighter::STATE_TALK, Fighter::EVENT_YES, Fighter::STATE_MOVE },
+		{ Fighter::STATE_TALK, Fighter::EVENT_NO, Fighter::STATE_WALK },
+		{ Fighter::STATE_MOVE, Fighter::EVENT_REACHED, Fighter::STATE_ATTACK },
+		{ Fighter::STATE_ATTACK, Fighter::EVENT_TERMINATE, Fighter::STATE_WALK }
+};
+
+Fighter* fighter = new Fighter(Fighter::TYPE_AI, fighterStateTransitions, 8);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -84,6 +42,7 @@ SimpleGame::SimpleGame() :
 	m_pWICFactory(NULL),
 	m_pOpeningBackgroundBitmap(NULL),
 	m_pGroundBitmap(NULL),
+	m_pHouseBitmap(),
 	m_pForestBitmap(NULL),
 	m_pTreesBitmap(NULL),
 	m_pDWriteFactory(NULL),
@@ -94,6 +53,7 @@ SimpleGame::SimpleGame() :
 	m_pChatIconBitmap(NULL),
 	m_pFrameBitmap(NULL),
 	m_pBushesBitmap(NULL),
+	m_pStoneBitmap(NULL),
 	m_pYellowBitmap(NULL),
 	m_pYellowBitmapBrush(NULL),
 	m_pRectGeo(NULL),
@@ -131,7 +91,12 @@ SimpleGame::~SimpleGame()
 	SAFE_RELEASE(m_pForestBitmap);
 	SAFE_RELEASE(m_pTreesBitmap);
 	SAFE_RELEASE(m_pBushesBitmap);
+	SAFE_RELEASE(m_pStoneBitmap);
 
+	for (int i = 0; i < ELF_IDLE_NUM; i++)
+	{
+		SAFE_RELEASE(m_pHouseBitmap[i]);
+	}
 
 	SAFE_RELEASE(m_pDWriteFactory);
 	SAFE_RELEASE(m_pTextFormat);
@@ -205,9 +170,11 @@ HRESULT SimpleGame::Initialize() {
 		L".\\Sound\\Effect\\Alert.wav",
 		L".\\Sound\\Effect\\Return.wav",
 		L".\\Sound\\Effect\\Running.wav",
-		L".\\Sound\\Effect\\Aww.wav",
+		L".\\Sound\\Effect\\Laugh.wav",
 		L".\\Sound\\Effect\\Busunda.wav",
-		L".\\Sound\\Effect\\Laugh.wav"
+		L".\\Sound\\Effect\\Badara.wav",
+		L".\\Sound\\Effect\\Arata.wav",
+		L".\\Sound\\Effect\\Aww.wav"
 	};
 
 	for (int i = 0; i < NUM_SOUND; i++) {
@@ -250,7 +217,6 @@ HRESULT SimpleGame::Initialize() {
 			}
 		}
 	}
-
 
 	QueryPerformanceFrequency(&m_nFrequency);
 	QueryPerformanceCounter(&m_nPrevTime);
@@ -381,6 +347,15 @@ HRESULT SimpleGame::CreateDeviceResources()
 		{
 			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\ground.png", 1200, 100, &m_pGroundBitmap);
 		}
+		for (int i = 0; i < 5; i++)
+		{
+			if (SUCCEEDED(hr))
+			{
+				wchar_t path_L[100];
+				wsprintf(path_L, L".\\Image\\png\\house%d.png", i);
+				hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, path_L, 0, 0, &m_pHouseBitmap[i]);
+			}
+		}
 		if (SUCCEEDED(hr))
 		{
 			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\Forest.jpg", 0, 0, &m_pForestBitmap);
@@ -392,6 +367,10 @@ HRESULT SimpleGame::CreateDeviceResources()
 		if (SUCCEEDED(hr))
 		{
 			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\bushes.png", 0, 0, &m_pBushesBitmap);
+		}
+		if (SUCCEEDED(hr))
+		{
+			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\png\\stone.png", 0, 0, &m_pStoneBitmap);
 		}
 		if (SUCCEEDED(hr))
 		{
@@ -539,12 +518,18 @@ void SimpleGame::DiscardDeviceResources()
 	SafeRelease(&m_pForestBitmap);
 	SafeRelease(&m_pTreesBitmap);
 	SafeRelease(&m_pBushesBitmap);
+	SafeRelease(&m_pStoneBitmap);
 	SafeRelease(&m_pYellowBitmap);
 	SafeRelease(&m_pYellowBitmapBrush);
 	SafeRelease(&m_pRadialGradientBrush);
 	SafeRelease(&m_pTextBoxBitmap);
 	SafeRelease(&m_pChatIconBitmap);
 	SafeRelease(&m_pFrameBitmap);
+
+	for (int i = 0; i < ELF_IDLE_NUM; i++)
+	{
+		SafeRelease(&m_pHouseBitmap[i]);
+	}
 	/*--------------------------------------------------------------------------------*/
 	SafeRelease(&m_pElfPortraitBitmap);
 	for (int i = 0; i < ELF_IDLE_NUM; i++)
@@ -622,58 +607,16 @@ void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F
 			m_pWhiteBrush
 		);
 		m_pRenderTarget->DrawText(
-			sc_PlayerScript1,
-			ARRAYSIZE(sc_PlayerScript1) - PlayerScript1Len,
+			sc_PlayerMain1,
+			ARRAYSIZE(sc_PlayerMain1) - PlayerMain1Len,
 			m_pTextFormat,
 			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
 			m_pWhiteBrush
 		);
-		if (PlayerScript1Len > 1)
+		if (PlayerMain1Len > 1)
 		{
-			PlayerScript1Len--;
-			soundManager->play(7);
-		}
-		break;
-	case CONV_PLAYER_02:
-		m_pRenderTarget->DrawText(
-			PlayerInfo,
-			ARRAYSIZE(PlayerInfo),
-			m_pTextFormat,
-			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
-			m_pWhiteBrush
-		);
-		m_pRenderTarget->DrawText(
-			sc_PlayerScript2,
-			ARRAYSIZE(sc_PlayerScript2) - PlayerScript2Len,
-			m_pTextFormat,
-			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
-			m_pWhiteBrush
-		);
-		if (PlayerScript2Len > 1)
-		{
-			PlayerScript2Len--;
-			soundManager->play(7);
-		}
-		break;
-	case CONV_PLAYER_03:
-		m_pRenderTarget->DrawText(
-			PlayerInfo,
-			ARRAYSIZE(PlayerInfo),
-			m_pTextFormat,
-			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
-			m_pWhiteBrush
-		);
-		m_pRenderTarget->DrawText(
-			sc_PlayerScript3,
-			ARRAYSIZE(sc_PlayerScript3) - PlayerScript3Len,
-			m_pTextFormat,
-			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
-			m_pWhiteBrush
-		);
-		if (PlayerScript3Len > 1)
-		{
-			PlayerScript3Len--;
-			soundManager->play(7);
+			PlayerMain1Len--;
+			soundManager->play(5);
 		}
 		break;
 	case CONV_FIGHTER_01:
@@ -685,15 +628,98 @@ void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F
 			m_pWhiteBrush
 		);
 		m_pRenderTarget->DrawText(
-			sc_FighterScript1,
-			ARRAYSIZE(sc_FighterScript1) - FighterScript1Len,
+			sc_FighterMain1,
+			ARRAYSIZE(sc_FighterMain1) - FighterMain1Len,
 			m_pTextFormat,
 			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
 			m_pWhiteBrush
 		);
-		if (FighterScript1Len > 1)
+		if (FighterMain1Len > 1)
 		{
-			FighterScript1Len--;
+			FighterMain1Len--;
+			soundManager->play(6);
+		}
+		break;
+	case CONV_FIGHTER_02:
+		m_pRenderTarget->DrawText(
+			FighterInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_FighterMain2,
+			ARRAYSIZE(sc_FighterMain2) - FighterMain2Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (FighterMain2Len > 1)
+		{
+			FighterMain2Len--;
+		}
+		break;
+	case CONV_FIGHTER_03:
+		m_pRenderTarget->DrawText(
+			FighterInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_FighterMain3,
+			ARRAYSIZE(sc_FighterMain3) - FighterMain3Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (FighterMain3Len > 1)
+		{
+			FighterMain3Len--;
+		}
+		break;
+	case CONV_FIGHTER_04:
+		m_pRenderTarget->DrawText(
+			FighterInfo,
+			ARRAYSIZE(FighterInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_FighterMain4,
+			ARRAYSIZE(sc_FighterMain4) - FighterMain4Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (FighterMain4Len > 1)
+		{
+			FighterMain4Len--;
+			soundManager->play(7);
+		}
+		break;
+	case CONV_FIGHTER_05:
+		m_pRenderTarget->DrawText(
+			FighterInfo,
+			ARRAYSIZE(FighterInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_FighterMain5,
+			ARRAYSIZE(sc_FighterMain5) - FighterMain5Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (FighterMain5Len > 1)
+		{
+			FighterMain5Len--;
+			soundManager->play(8);
 		}
 		break;
 	case CONV_ELF_01:
@@ -705,15 +731,16 @@ void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F
 			m_pWhiteBrush
 		);
 		m_pRenderTarget->DrawText(
-			sc_ElfScript1,
-			ARRAYSIZE(sc_ElfScript1) - ElfScript1Len,
+			sc_ElfMain1,
+			ARRAYSIZE(sc_ElfMain1) - ElfMain1Len,
 			m_pTextFormat,
 			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
 			m_pWhiteBrush
 		);
-		if (ElfScript1Len > 1)
+		if (ElfMain1Len > 1)
 		{
-			ElfScript1Len--;
+			ElfMain1Len--;
+			soundManager->play(9);
 		}
 		break;
 	case CONV_ELF_02:
@@ -725,18 +752,58 @@ void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F
 			m_pWhiteBrush
 		);
 		m_pRenderTarget->DrawText(
-			sc_ElfScript2,
-			ARRAYSIZE(sc_ElfScript2) - ElfScript2Len,
+			sc_ElfMain2,
+			ARRAYSIZE(sc_ElfMain2) - ElfMain2Len,
 			m_pTextFormat,
 			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
 			m_pWhiteBrush
 		);
-		if (ElfScript2Len > 1)
+		if (ElfMain2Len > 1)
 		{
-			ElfScript2Len--;
+			ElfMain2Len--;
 		}
 		break;
 	case CONV_ELF_03:
+		m_pRenderTarget->DrawText(
+			PlayerInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfMain3,
+			ARRAYSIZE(sc_ElfMain3) - ElfMain3Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfMain3Len > 1)
+		{
+			ElfMain3Len--;
+		}
+		break;
+	case CONV_ELF_04:
+		m_pRenderTarget->DrawText(
+			PlayerInfo,
+			ARRAYSIZE(PlayerInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfMain4,
+			ARRAYSIZE(sc_ElfMain4) - ElfMain4Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfMain4Len > 1)
+		{
+			ElfMain4Len--;
+		}
+		break;
+	case CONV_ELF_05:
 		m_pRenderTarget->DrawText(
 			ElfInfo,
 			ARRAYSIZE(ElfInfo),
@@ -745,15 +812,35 @@ void SimpleGame::DisplayConversation(ID2D1Bitmap* m_pPortraitBitmap, D2D1_SIZE_F
 			m_pWhiteBrush
 		);
 		m_pRenderTarget->DrawText(
-			sc_ElfScript3,
-			ARRAYSIZE(sc_ElfScript3) - ElfScript3Len,
+			sc_ElfMain5,
+			ARRAYSIZE(sc_ElfMain5) - ElfMain5Len,
 			m_pTextFormat,
 			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
 			m_pWhiteBrush
 		);
-		if (ElfScript3Len > 1)
+		if (ElfMain5Len > 1)
 		{
-			ElfScript3Len--;
+			ElfMain5Len--;
+		}
+		break;
+	case CONV_ELF_06:
+		m_pRenderTarget->DrawText(
+			ElfInfo,
+			ARRAYSIZE(ElfInfo),
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 250, rtSize.width - 100, rtSize.height - 110),
+			m_pWhiteBrush
+		);
+		m_pRenderTarget->DrawText(
+			sc_ElfMain6,
+			ARRAYSIZE(sc_ElfMain6) - ElfMain6Len,
+			m_pTextFormat,
+			D2D1::RectF(280, rtSize.height - 200, rtSize.width - 100, rtSize.height - 60),
+			m_pWhiteBrush
+		);
+		if (ElfMain6Len > 1)
+		{
+			ElfMain6Len--;
 		}
 		break;
 	}
@@ -779,17 +866,20 @@ HRESULT SimpleGame::OnRender()
 
 		if ((sceneNo == SCENE_OPENING) || (sceneNo == SCENE_OPENING_TO_PLAY))
 		{
-			soundManager->play(0);
+			if (sceneNo == SCENE_OPENING)
+			{
+				soundManager->play(0);
+			}
 			m_pRenderTarget->DrawBitmap(m_pOpeningBackgroundBitmap, D2D1::RectF(0, 0, rtSize.width, rtSize.height));
 
 			hr = m_pRenderTarget->CreateLayer(NULL, &pLayer);
 
-			static double localOpacity = 0.0;
+			static float localOpacity = 0.0;
 			if (SUCCEEDED(hr))
 			{
 				if (localOpacity < 0.6)
 				{
-					localOpacity += 0.01;
+					localOpacity += 0.01f;
 				}
 
 				m_pRenderTarget->PushLayer(
@@ -826,12 +916,11 @@ HRESULT SimpleGame::OnRender()
 			}
 			if (sceneNo == SCENE_OPENING_TO_PLAY)
 			{
-				soundManager->stop(0);
 				if (SUCCEEDED(hr))
 				{
 					if (opacity < 1.0)
 					{
-						opacity += 0.01;
+						opacity += 0.01f;
 					}
 
 					m_pRenderTarget->PushLayer(
@@ -853,6 +942,7 @@ HRESULT SimpleGame::OnRender()
 				if(opacity >= 1.0)
 				{
 					sceneNo = SCENE_PLAY;
+
 				}
 			}
 		}
@@ -867,43 +957,86 @@ HRESULT SimpleGame::OnRender()
 			D2D1_SIZE_F bitmapSize = m_pGroundBitmap->GetSize();
 			// 지면 그리기
 			m_pRenderTarget->DrawBitmap(m_pGroundBitmap, D2D1::RectF(0, rtSize.height - 100, rtSize.width, rtSize.height));
+			
+			// 돌 그리기
+			if (fighter->getState() == Fighter::StateID::STATE_ATTACK) {
+				static D2D1_POINT_2F stonePosition = D2D1::Point2F(-100, rtSize.height - 530);
+				static float v = -10;
+				m_pRenderTarget->DrawBitmap(m_pStoneBitmap, D2D1::RectF(stonePosition.x, stonePosition.y, stonePosition.x + 100, stonePosition.y + 100));
+				stonePosition.x += 10;
+				v += 0.25;
+				stonePosition.y += v;
+				if (stonePosition.x > rtSize.width- 200)
+				{
+					Attack = false;
+					stonePosition = D2D1::Point2F(-100, rtSize.height - 530);
+					v = -10;
+					houseHP -= 20;
+					fighter->issueEvent(Fighter::EVENT_TERMINATE);
+				}
+			}
+
+			//집 그리기
+			if (houseHP > 80) {
+				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[0], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
+			}
+			else if (houseHP > 60) {
+				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[1], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
+			}
+			else if (houseHP > 40) {
+				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[2], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
+			}
+			else if (houseHP > 20) {
+				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[3], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
+			}
+			else if (houseHP > 0) {
+				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[4], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
+			}
 
 			D2D1_POINT_2F ground = D2D1::Point2F(0, rtSize.height - 90);
 
+			fighter->update();
 			// NPC: FIGHTER
-			if (FIGHTERState == IDLE)
+			if (fighter->getState() == Fighter::StateID::STATE_STOP|| 
+				fighter->getState() == Fighter::StateID::STATE_TALK||
+				fighter->getState() == Fighter::StateID::STATE_ATTACK)
 			{
-				if (FIGHTERFaced == RIGHT)
+				if (fighter->getFaced() == RIGHT)
 				{
-					DrawCharacter(m_pRenderTarget, m_pFighterIdleRBitmap, FIGHTERFrame++, fighterMove, ground);
+					DrawCharacter(m_pRenderTarget, m_pFighterIdleRBitmap, fighter->getFrame(), fighter->getPosition(), ground);
+					fighter->setFrame(fighter->getFrame() + 1);
 				}
-				else // FIGHTERFaced == LEFT
+				else // fighter->getFaced() == LEFT
 				{
-					DrawCharacter(m_pRenderTarget, m_pFighterIdleLBitmap, FIGHTERFrame++, fighterMove, ground);
+					DrawCharacter(m_pRenderTarget, m_pFighterIdleLBitmap, fighter->getFrame(), fighter->getPosition(), ground);
+					fighter->setFrame(fighter->getFrame() + 1);
 				}
-				if (FIGHTERFrame / 3 >= FIGHTER_IDLE_NUM) FIGHTERFrame = 0;
+				if (fighter->getFrame() / 3 >= FIGHTER_IDLE_NUM) fighter->setFrame(0);
 			}
-			else if (FIGHTERState == WALK)
+			else if (fighter->getState() == Fighter::StateID::STATE_WALK|| 
+				fighter->getState() == Fighter::StateID::STATE_MOVE)
 			{
-				if (FIGHTERFaced == RIGHT)
+				if (fighter->getFaced() == RIGHT)
 				{
-					DrawCharacter(m_pRenderTarget, m_pFighterWalkRBitmap, FIGHTERFrame++, fighterMove, ground);
-					if (fighterMove.x < 600)
+					DrawCharacter(m_pRenderTarget, m_pFighterWalkRBitmap, fighter->getFrame(), fighter->getPosition(), ground);
+					fighter->setFrame(fighter->getFrame() + 1);
+					/*if (fighter->getPosition().x < 600)
 					{
-						fighterMove.x += 1;
+						fighter->setPosition(D2D1::Point2F(fighter->getPosition().x + 1, fighter->getPosition().y));
 					}
-					else { FIGHTERFaced = LEFT; }
+					else { fighter->getFaced() = LEFT; }*/
 				}
-				else // FIGHTERFaced == LEFT
+				else // fighter->getFaced() == LEFT
 				{
-					DrawCharacter(m_pRenderTarget, m_pFighterWalkLBitmap, FIGHTERFrame++, fighterMove, ground);
-					if (fighterMove.x > -200)
+					DrawCharacter(m_pRenderTarget, m_pFighterWalkLBitmap, fighter->getFrame(), fighter->getPosition(), ground);
+					fighter->setFrame(fighter->getFrame() + 1);
+					/*if (fighter->getPosition().x > -200)
 					{
-						fighterMove.x -= 1;
+						fighter->setPosition(D2D1::Point2F(fighter->getPosition().x - 1, fighter->getPosition().y));
 					}
-					else { FIGHTERFaced = RIGHT; }
+					else { fighter->getFaced() = RIGHT; }*/
 				}
-				if (FIGHTERFrame / 3 >= FIGHTER_WALK_NUM) FIGHTERFrame = 0;
+				if (fighter->getFrame() / 3 >= FIGHTER_WALK_NUM) fighter->setFrame(0);
 			}
 
 			// NPC: ELF
@@ -1000,18 +1133,18 @@ HRESULT SimpleGame::OnRender()
 				if (SORCERESSFrame / 3 >= SORCERESS_WALK_NUM) SORCERESSFrame = 0;
 			}
 
-			if (fighterMove.x + 100 > playerMove.x && fighterMove.x - 100 < playerMove.x)
+			if (fighter->getPosition().x + 100 > playerMove.x && fighter->getPosition().x - 100 < playerMove.x)
 			{
 				bitmapSize = m_pChatIconBitmap->GetSize();
 				m_pRenderTarget->DrawBitmap(m_pChatIconBitmap,
 					D2D1::RectF(
-						300 - bitmapSize.width / 2 + fighterMove.x,
+						300 - bitmapSize.width / 2 + fighter->getPosition().x,
 						ground.y - bitmapSize.height - 230,
-						300 + bitmapSize.width / 2 + fighterMove.x,
+						300 + bitmapSize.width / 2 + fighter->getPosition().x,
 						ground.y - 230));
-				FIGHTERChatTrigger = 1;
+				fighter->setChatTrigger(1);
 			}
-			else { FIGHTERChatTrigger = 0; }
+			else { fighter->setChatTrigger(0); }
 
 			if (elfMove.x + 100 > playerMove.x && elfMove.x - 100 < playerMove.x)
 			{
@@ -1040,7 +1173,7 @@ HRESULT SimpleGame::OnRender()
 			m_pRenderTarget->DrawBitmap(m_pBushesBitmap, D2D1::RectF(-100, rtSize.height - 300, rtSize.width + 300, rtSize.height));
 			m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
 			m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Skew(skewAngle2, 0, D2D1::Point2F(rtSize.width, rtSize.height)));
-			m_pRenderTarget->DrawBitmap(m_pBushesBitmap, D2D1::RectF(-300, rtSize.height - 400, rtSize.width + 100, rtSize.height), 0.7, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+			m_pRenderTarget->DrawBitmap(m_pBushesBitmap, D2D1::RectF(-300, rtSize.height - 400, rtSize.width + 100, rtSize.height), 0.7f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 
 			// LightningBug
 			m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -1062,7 +1195,7 @@ HRESULT SimpleGame::OnRender()
 				m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
 				if (opacity > 0.0)
 				{
-					opacity -= 0.01;
+					opacity -= 0.01f;
 				}
 
 				m_pRenderTarget->PushLayer(
@@ -1091,14 +1224,20 @@ HRESULT SimpleGame::OnRender()
 					case CONV_PLAYER_01:
 						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_01);
 						break;
-					case CONV_PLAYER_02:
-						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_02);
-						break;
-					case CONV_PLAYER_03:
-						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_PLAYER_03);
-						break;
 					case CONV_FIGHTER_01:
 						DisplayConversation(m_pFighterPortraitBitmap, rtSize, CONV_FIGHTER_01);
+						break;
+					case CONV_FIGHTER_02:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_FIGHTER_02);
+						break;
+					case CONV_FIGHTER_03:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_FIGHTER_03);
+						break;
+					case CONV_FIGHTER_04:
+						DisplayConversation(m_pFighterPortraitBitmap, rtSize, CONV_FIGHTER_04);
+						break;
+					case CONV_FIGHTER_05:
+						DisplayConversation(m_pFighterPortraitBitmap, rtSize, CONV_FIGHTER_05);
 						break;
 					case CONV_ELF_01:
 						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_01);
@@ -1107,7 +1246,16 @@ HRESULT SimpleGame::OnRender()
 						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_02);
 						break;
 					case CONV_ELF_03:
-						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_03);
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_ELF_03);
+						break;
+					case CONV_ELF_04:
+						DisplayConversation(m_pSorceressPortraitBitmap, rtSize, CONV_ELF_04);
+						break;
+					case CONV_ELF_05:
+						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_05);
+						break;
+					case CONV_ELF_06:
+						DisplayConversation(m_pElfPortraitBitmap, rtSize, CONV_ELF_06);
 						break;
 					default:
 						break;
@@ -1190,53 +1338,240 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 			}
 			case WM_KEYDOWN:
 			{
-				switch (wParam)
+				switch (wParam) // 음소거 기능
 				{
-				case VK_UP:
-					break;
-				case VK_DOWN:
-					break;
-				case VK_LEFT:
-					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
-					{
-						if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
-						SORCERESSFaced = LEFT;
-						SORCERESSState = WALK;
-					}
-					break;
-				case VK_RIGHT:
-					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
-					{
-						if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
-						SORCERESSFaced = RIGHT;
-						SORCERESSState = WALK;
-					}
-					break;
-				case VK_SPACE:
-					break;
-					break;
-				case 'f':
-				case 'F':
-					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
-					{
-						if (FIGHTERChatTrigger == TRUE) {
-							FighterScript1Len = ARRAYSIZE(sc_FighterScript1);
-							convNo = CONV_FIGHTER_01;
-							ConversationDisplayed = TRUE;
-							SORCERESSState = IDLE;
-							soundManager->play(6);
-						}
-						else if (ELFChatTrigger == TRUE) {
-							ElfScript1Len = ARRAYSIZE(sc_ElfScript1);
-							convNo = CONV_ELF_01;
-							ConversationDisplayed = TRUE;
-							SORCERESSState = IDLE;
-							soundManager->play(5);
-						}
-					}
-					break;
 				case 'm':
 				case 'M':
+					if (Mute)
+					{
+						soundManager->volume(1.0);
+						Mute = false;
+					}
+					else 
+					{
+						soundManager->volume(0.0);
+						Mute = true;
+					}
+					break;
+				}
+				switch (sceneNo)
+				{
+				case SCENE_OPENING:
+					switch (wParam)
+					{
+					case VK_RETURN:
+						soundManager->stop(0);
+						soundManager->play(2);
+						sceneNo = SCENE_OPENING_TO_PLAY;
+						ConversationDisplayed = TRUE;
+						break;
+					}
+				case SCENE_PLAY:
+					switch (ConversationDisplayed)
+					{
+					case TRUE:
+						switch (convNo)
+						{
+						case CONV_PLAYER_01:
+							if (PlayerMain1Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									break;
+								}
+							}
+							break;
+						case CONV_FIGHTER_01:
+							if (FighterMain1Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									convNo = CONV_FIGHTER_02;
+									FighterMain1Len = ARRAYSIZE(sc_FighterMain1);
+									break;
+								}
+							}
+							break;
+						case CONV_FIGHTER_02:
+							if (FighterMain2Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									convNo = CONV_FIGHTER_03;
+									FighterMain2Len = ARRAYSIZE(sc_FighterMain2);
+									break;
+								}
+							}
+							break;
+						case CONV_FIGHTER_03:
+							if (FighterMain3Len == 1)
+							{
+								switch (wParam)
+								{
+								case 'y':
+								case 'Y':
+									convNo = CONV_FIGHTER_04;
+									FighterMain3Len = ARRAYSIZE(sc_FighterMain3);
+									fighter->issueEvent(Fighter::EventID::EVENT_YES);
+									break;
+								case 'n':
+								case 'N':
+									convNo = CONV_FIGHTER_05;
+									FighterMain3Len = ARRAYSIZE(sc_FighterMain3);
+									fighter->issueEvent(Fighter::EventID::EVENT_NO);
+									break;
+								}
+							}
+							break;
+						case CONV_FIGHTER_04:
+							if (FighterMain4Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									FighterMain4Len = ARRAYSIZE(sc_FighterMain4);
+									break;
+								}
+							}
+							break;
+						case CONV_FIGHTER_05:
+							if (FighterMain5Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									FighterMain5Len = ARRAYSIZE(sc_FighterMain5);
+									break;
+								}
+							}
+							break;
+						case CONV_ELF_01:
+							switch (wParam)
+							{
+							case VK_RETURN:
+								convNo = CONV_ELF_02;
+								ElfMain1Len = ARRAYSIZE(sc_ElfMain1);
+								break;
+							}
+							break;
+						case CONV_ELF_02:
+							switch (wParam)
+							{
+							case VK_RETURN:
+								convNo = CONV_ELF_03;
+								ElfMain2Len = ARRAYSIZE(sc_ElfMain2);
+								break;
+							}
+							break;
+						case CONV_ELF_03:
+							switch (wParam)
+							{
+							case VK_RETURN:
+								convNo = CONV_ELF_04;
+								ElfMain3Len = ARRAYSIZE(sc_ElfMain3);
+								break;
+							}
+							break;
+						case CONV_ELF_04:
+							switch (wParam)
+							{
+							case 'y':
+							case 'Y':
+								convNo = CONV_ELF_05;
+								ElfMain4Len = ARRAYSIZE(sc_ElfMain4);
+								break;
+							case 'n':
+							case 'N':
+								convNo = CONV_ELF_06;
+								ElfMain4Len = ARRAYSIZE(sc_ElfMain4);
+								break;
+							}
+							break;
+						case CONV_ELF_05:
+							if (ElfMain5Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									ElfMain5Len = ARRAYSIZE(sc_ElfMain5);
+									break;
+								}
+							}
+							break;
+						case CONV_ELF_06:
+							if (ElfMain6Len == 1)
+							{
+								switch (wParam)
+								{
+								case VK_RETURN:
+									ConversationDisplayed = FALSE;
+									soundManager->reset(5);
+									soundManager->reset(6);
+									soundManager->reset(7);
+									ElfMain6Len = ARRAYSIZE(sc_ElfMain6);
+									break;
+								}
+							}
+							break;
+						}
+						break;
+					case FALSE:
+						switch (wParam)
+						{
+						case VK_LEFT:
+							if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+							{
+								if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
+								SORCERESSFaced = LEFT;
+								SORCERESSState = WALK;
+							}
+							break;
+						case VK_RIGHT:
+							if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)
+							{
+								if (SORCERESSState == IDLE) { SORCERESSFrame = 0; }
+								SORCERESSFaced = RIGHT;
+								SORCERESSState = WALK;
+							}
+							break;
+						case 'f':
+						case 'F':
+							if (fighter->getChatTrigger() == TRUE) {
+								FighterMain1Len = ARRAYSIZE(sc_FighterMain1);
+								convNo = CONV_FIGHTER_01;
+								ConversationDisplayed = TRUE;
+								SORCERESSState = IDLE;
+								fighter->issueEvent(Fighter::EventID::EVENT_TALK);
+							}
+							else if (ELFChatTrigger == TRUE) {
+								ElfMain1Len = ARRAYSIZE(sc_ElfMain1);
+								convNo = CONV_ELF_01;
+								ConversationDisplayed = TRUE;
+								SORCERESSState = IDLE;
+							}
+							break;
+						}
+						break;
+					}
 					break;
 				}
 			}
@@ -1247,56 +1582,6 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 			{
 				switch (wParam)
 				{
-				case VK_RETURN:
-					switch (sceneNo)
-					{
-					case SCENE_OPENING:
-						soundManager->stop(0);
-						soundManager->play(2);
-						sceneNo = SCENE_OPENING_TO_PLAY;
-						ConversationDisplayed = TRUE;
-						break;
-					case SCENE_PLAY:
-						switch (ConversationDisplayed)
-						{
-						case TRUE:
-							soundManager->play(3);
-							if (PlayerScript1Len <= 1)
-							{
-								switch (convNo)
-								{
-								case CONV_ELF_01:
-									convNo = CONV_ELF_02;
-									break;
-								case CONV_ELF_02:
-									convNo = CONV_PLAYER_02;
-									break;
-								case CONV_PLAYER_02:
-									convNo = CONV_PLAYER_03;
-									break;
-								case CONV_PLAYER_03:
-									convNo = CONV_ELF_03;
-									break;
-								case CONV_PLAYER_01:
-								case CONV_ELF_03:
-								case CONV_FIGHTER_01:
-									ConversationDisplayed = FALSE;
-									soundManager->reset(5);
-									soundManager->reset(6);
-									soundManager->reset(7);
-									break;
-								}
-							}
-							break;
-						case FALSE:
-							break;
-						default:
-							break;
-						}
-						break;
-					default:
-						break;
-					}
 				case VK_UP:
 					break;
 				case VK_DOWN:
@@ -1332,7 +1617,6 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 			}
 			result = 1;  wasHandled = true;  break;
 			}//switch
-
 		}
 		if (!wasHandled)
 			result = DefWindowProc(hwnd, message, wParam, lParam);
