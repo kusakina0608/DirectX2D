@@ -5,6 +5,8 @@
 
 CSoundManager* soundManager = NULL;
 
+float volume = 1.0;
+
 DWORD fighterStateTransitions[][3] = {
 		{ Fighter::STATE_STOP, Fighter::EVENT_STARTWALK, Fighter::STATE_WALK },
 		{ Fighter::STATE_STOP, Fighter::EVENT_TALK, Fighter::STATE_TALK },
@@ -41,6 +43,7 @@ SimpleGame::SimpleGame() :
 	m_pRenderTarget(NULL),
 	m_pWICFactory(NULL),
 	m_pOpeningBackgroundBitmap(NULL),
+	m_pEndingBackgroundBitmap(NULL),
 	m_pGroundBitmap(NULL),
 	m_pHouseBitmap(),
 	m_pForestBitmap(NULL),
@@ -87,6 +90,7 @@ SimpleGame::~SimpleGame()
 	SAFE_RELEASE(m_pWICFactory);
 
 	SAFE_RELEASE(m_pOpeningBackgroundBitmap);
+	SAFE_RELEASE(m_pEndingBackgroundBitmap);
 	SAFE_RELEASE(m_pGroundBitmap);
 	SAFE_RELEASE(m_pForestBitmap);
 	SAFE_RELEASE(m_pTreesBitmap);
@@ -342,6 +346,9 @@ HRESULT SimpleGame::CreateDeviceResources()
 		if (SUCCEEDED(hr))
 		{
 			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\jpg\\OpeningBackground.jpg", size.width, size.height, &m_pOpeningBackgroundBitmap);
+		}if (SUCCEEDED(hr))
+		{
+			hr = LoadBitmapFromFile(m_pRenderTarget, m_pWICFactory, L".\\Image\\jpg\\EndingBackground.jpg", size.width, size.height, &m_pEndingBackgroundBitmap);
 		}
 		if (SUCCEEDED(hr))
 		{
@@ -918,6 +925,7 @@ HRESULT SimpleGame::OnRender()
 			{
 				if (SUCCEEDED(hr))
 				{
+					hr = m_pRenderTarget->CreateLayer(NULL, &pLayer);
 					if (opacity < 1.0)
 					{
 						opacity += 0.01f;
@@ -946,7 +954,7 @@ HRESULT SimpleGame::OnRender()
 				}
 			}
 		}
-		if (sceneNo == SCENE_PLAY)
+		if (sceneNo == SCENE_PLAY || sceneNo == SCENE_PLAY_TO_ENDING)
 		{
 			soundManager->play(1);
 			// 배경 그리기
@@ -992,6 +1000,9 @@ HRESULT SimpleGame::OnRender()
 			else if (houseHP > 0) {
 				m_pRenderTarget->DrawBitmap(m_pHouseBitmap[4], D2D1::RectF(rtSize.width - 500, rtSize.height - 530, rtSize.width - 20, rtSize.height - 50));
 			}
+			else {
+				sceneNo = SCENE_PLAY_TO_ENDING;
+			}
 
 			D2D1_POINT_2F ground = D2D1::Point2F(0, rtSize.height - 90);
 
@@ -1020,21 +1031,11 @@ HRESULT SimpleGame::OnRender()
 				{
 					DrawCharacter(m_pRenderTarget, m_pFighterWalkRBitmap, fighter->getFrame(), fighter->getPosition(), ground);
 					fighter->setFrame(fighter->getFrame() + 1);
-					/*if (fighter->getPosition().x < 600)
-					{
-						fighter->setPosition(D2D1::Point2F(fighter->getPosition().x + 1, fighter->getPosition().y));
-					}
-					else { fighter->getFaced() = LEFT; }*/
 				}
 				else // fighter->getFaced() == LEFT
 				{
 					DrawCharacter(m_pRenderTarget, m_pFighterWalkLBitmap, fighter->getFrame(), fighter->getPosition(), ground);
 					fighter->setFrame(fighter->getFrame() + 1);
-					/*if (fighter->getPosition().x > -200)
-					{
-						fighter->setPosition(D2D1::Point2F(fighter->getPosition().x - 1, fighter->getPosition().y));
-					}
-					else { fighter->getFaced() = RIGHT; }*/
 				}
 				if (fighter->getFrame() / 3 >= FIGHTER_WALK_NUM) fighter->setFrame(0);
 			}
@@ -1190,30 +1191,32 @@ HRESULT SimpleGame::OnRender()
 			D2D1::Matrix3x2F scale = D2D1::Matrix3x2F::Scale(((skewAngle1 + 85.0f) / 200.0f), ((skewAngle1 + 85.0f) / 200.0f));
 			m_pRenderTarget->SetTransform(scale * translation);
 			m_pRenderTarget->FillGeometry(m_pRectGeo, m_pYellowBitmapBrush, m_pRadialGradientBrush);
-			if (SUCCEEDED(hr))
-			{
-				m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
-				if (opacity > 0.0)
+			if (sceneNo == SCENE_PLAY) {
+				if (SUCCEEDED(hr))
 				{
-					opacity -= 0.01f;
+					m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+					if (opacity > 0.0)
+					{
+						opacity -= 0.01f;
+					}
+
+					m_pRenderTarget->PushLayer(
+						D2D1::LayerParameters(
+							D2D1::InfiniteRect(),
+							NULL,
+							D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+							D2D1::IdentityMatrix(),
+							opacity,
+							m_pBlackBrush,
+							D2D1_LAYER_OPTIONS_NONE),
+						pLayer
+					);
+					m_pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, rtSize.height), m_pBlackBrush);
+
+					m_pRenderTarget->PopLayer();
 				}
-
-				m_pRenderTarget->PushLayer(
-					D2D1::LayerParameters(
-						D2D1::InfiniteRect(),
-						NULL,
-						D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-						D2D1::IdentityMatrix(),
-						opacity,
-						m_pBlackBrush,
-						D2D1_LAYER_OPTIONS_NONE),
-					pLayer
-				);
-				m_pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, rtSize.height), m_pBlackBrush);
-
-				m_pRenderTarget->PopLayer();
+				SAFE_RELEASE(pLayer);
 			}
-			SAFE_RELEASE(pLayer);
 			if (opacity <= 0)
 			{
 				switch (ConversationDisplayed)
@@ -1267,8 +1270,65 @@ HRESULT SimpleGame::OnRender()
 					break;
 				}
 			}
-		}
+			if (sceneNo == SCENE_PLAY_TO_ENDING)
+			{
+				m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity()); //변환행렬을 항등행렬로.
+				if (SUCCEEDED(hr))
+				{
+					if (opacity < 1.0)
+					{
+						opacity += 0.01f;
+					}
 
+					m_pRenderTarget->PushLayer(
+						D2D1::LayerParameters(
+							D2D1::InfiniteRect(),
+							NULL,
+							D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+							D2D1::IdentityMatrix(),
+							opacity,
+							m_pBlackBrush,
+							D2D1_LAYER_OPTIONS_NONE),
+						pLayer
+					);
+					m_pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, rtSize.height), m_pBlackBrush);
+
+					m_pRenderTarget->PopLayer();
+				}
+				SAFE_RELEASE(pLayer);
+				if (opacity >= 1.0)
+				{
+					sceneNo = SCENE_ENDING;
+				}
+			}
+		}
+		if (sceneNo == SCENE_ENDING) {
+			m_pRenderTarget->DrawBitmap(m_pEndingBackgroundBitmap, D2D1::RectF(0, 0, rtSize.width, rtSize.height));
+			if (SUCCEEDED(hr))
+			{
+				m_pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+				if (opacity > 0.0)
+				{
+					opacity -= 0.01f;
+				}
+
+				m_pRenderTarget->PushLayer(
+					D2D1::LayerParameters(
+						D2D1::InfiniteRect(),
+						NULL,
+						D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+						D2D1::IdentityMatrix(),
+						opacity,
+						m_pBlackBrush,
+						D2D1_LAYER_OPTIONS_NONE),
+					pLayer
+				);
+				m_pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, rtSize.height), m_pBlackBrush);
+
+				m_pRenderTarget->PopLayer();
+			}
+			SAFE_RELEASE(pLayer);
+		}
 		hr = m_pRenderTarget->EndDraw();  //그리기를 수행함. 성공하면 S_OK를 리턴함.
 
 	// 애니메이션의 끝에 도달하면 다시 처음으로 되돌려서 반복되도록 함.
@@ -1342,15 +1402,15 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 				{
 				case 'm':
 				case 'M':
-					if (Mute)
+					if (volume > 0.0)
 					{
-						soundManager->volume(1.0);
-						Mute = false;
+						volume = 0.0;
+						soundManager->volume(volume);
 					}
 					else 
 					{
-						soundManager->volume(0.0);
-						Mute = true;
+						volume = 1.0;
+						soundManager->volume(volume);
 					}
 					break;
 				}
@@ -1583,8 +1643,12 @@ LRESULT CALLBACK SimpleGame::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 				switch (wParam)
 				{
 				case VK_UP:
+					volume += volume >= 1.0 ? 0.0 : 0.1;
+					soundManager->volume(volume);
 					break;
 				case VK_DOWN:
+					volume -= volume <= 0.0 ? 0.0 : 0.1;
+					soundManager->volume(volume);
 					break;
 				case VK_LEFT:
 					if (sceneNo == SCENE_PLAY && ConversationDisplayed == FALSE)

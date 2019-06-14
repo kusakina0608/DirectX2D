@@ -51,6 +51,8 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define SCENE_OPENING 0
 #define SCENE_OPENING_TO_PLAY 1
 #define SCENE_PLAY 2
+#define SCENE_PLAY_TO_ENDING 3
+#define SCENE_ENDING 4
 
 #define CONV_PLAYER_01 1001
 #define CONV_ELF_01 2001
@@ -163,6 +165,7 @@ private:
 
 	// 배경을 위한 비트맵
 	ID2D1Bitmap* m_pOpeningBackgroundBitmap;
+	ID2D1Bitmap* m_pEndingBackgroundBitmap;
 	ID2D1Bitmap* m_pGroundBitmap;
 	ID2D1Bitmap* m_pForestBitmap;
 	ID2D1Bitmap* m_pTreesBitmap;
